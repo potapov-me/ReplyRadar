@@ -17,7 +17,9 @@ replyradar/
 │       │   └── repos/             # весь SQL скрыт здесь, наружу — только типизированные методы
 │       │       ├── messages.py
 │       │       ├── entities.py    # включая рекурсивные CTE для графа
-│       │       └── signals.py
+│       │       ├── signals.py
+│       │       ├── quarantine.py  # processing_quarantine: вставка, reprocess, skip
+│       │       └── audit.py       # entity_audit_log: запись и чтение истории операций
 │       │
 │       ├── ingestion/
 │       │   ├── listener.py        # Telethon realtime listener → asyncio.Queue
@@ -69,10 +71,11 @@ replyradar/
 │       └── api/
 │           ├── app.py             # FastAPI instance, middleware, lifespan
 │           ├── deps.py            # зависимости: db connection, pagination params
-│           └── routes/            # маршруты вызывают только usecases/, не repos напрямую
+│           └── routes/
 │               ├── chats.py       # /chats, /backfill, /today, /pending, /commitments, /risks
-│               ├── people.py      # /people — Entity Knowledge Graph API
-│               └── orgs.py        # /orgs
+│               ├── people.py      # /people — query path напрямую в repos; команды через usecases/
+│               ├── orgs.py        # /orgs
+│               └── admin.py       # /admin/quarantine, /admin/metrics, /admin/entities/{id}/audit
 │
 ├── tests/
 │   ├── conftest.py                # фикстуры: тестовая БД, моки LLM-контрактов
@@ -81,8 +84,16 @@ replyradar/
 │   ├── knowledge/
 │   └── api/
 │
-├── evals/                         # ручная офлайн-проверка качества LLM-стадий
-│   └── README.md
+├── evals/                         # офлайн-проверка качества LLM-стадий
+│   ├── README.md                  # процесс: golden datasets, gate перед merge prompt-изменений
+│   └── datasets/                  # фиксированные наборы кейсов для regression
+
+├── docs/
+│   └── runbooks/                  # короткие операционные инструкции
+│       ├── lm-studio-down.md
+│       ├── session-corrupted.md
+│       ├── backlog-growing.md
+│       └── bad-entity-merge.md
 │
 ├── migrations/                    # Alembic (без привязки к SQLAlchemy ORM,
 │   ├── env.py                     # схема описывается в SQL миграций)

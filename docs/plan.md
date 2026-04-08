@@ -8,12 +8,13 @@
 
 **Что строится:**
 - `src`-layout, `pyproject.toml` с зависимостями
-- `config.py` — pydantic-settings, читает `config/default.yaml` и env
+- `config.py` — pydantic-settings, читает `config/default.yaml` с policy-as-code значениями (ADR-0014)
 - `db/pool.py` — asyncpg connection pool
+- `bootstrap.py` — composition root
 - Alembic: первая миграция с полной схемой БД (все таблицы из `architecture.md`)
-- `main.py` — FastAPI lifespan: открывает пул, применяет pending миграции, закрывает пул
+- Архитектурные тесты на import boundaries: `tests/test_import_boundaries.py` запрещает `processing→usecases`, `routes→repos`, `knowledge→api`
 
-**Артефакт:** `uvicorn src.replyradar.main:app` стартует, подключается к Postgres, `GET /status` возвращает `{"db": "ok"}`. Схема БД полностью развёрнута через `alembic upgrade head`.
+**Артефакт:** `uvicorn src.replyradar.main:app` стартует, `GET /status` возвращает component-level состояние. Схема развёрнута. Тест границ импортов проходит в CI.
 
 ---
 
@@ -32,14 +33,14 @@
 ## Этап 3. Processing Core
 
 **Что строится:**
-- `llm/client.py` — LiteLLM wrapper, единственная точка вызова; при недоступности LM Studio бросает `LLMUnavailableError`
-- `processing/classify.py` — определяет `is_signal`, пишет `classified_at` или `classify_error`
-- `processing/extract.py` — извлекает commitments, pending_replies, communication_risks; пишет `extracted_at` или `extract_error`
-- `processing/embed.py` — pgvector embedding; пишет `embedded_at` или `embed_error`
+- `llm/client.py` — LiteLLM wrapper; `llm/contracts/` — Pydantic-схемы ответов; `llm/prompts/` — шаблоны
+- `processing/classify.py`, `extract.py`, `embed.py` — стадии с таксономией ошибок (transient/permanent/degraded)
 - `processing/engine.py` — оркестратор: realtime queue + backfill loop, приоритет realtime
-- `db/repos/signals.py` — upsert по `source_fingerprint` для commitments и pending_replies
+- `db/repos/signals.py` — upsert по `source_fingerprint`
+- `db/repos/quarantine.py` — после `MAX_RETRIES` permanent-ошибок сообщение уходит в `processing_quarantine`
+- `api/routes/admin.py` — `GET /admin/quarantine`, `POST /admin/quarantine/{id}/reprocess|skip`
 
-**Артефакт:** после backfill в таблицах `commitments`, `pending_replies`, `communication_risks` появляются записи. При недоступности LM Studio сообщения остаются с `NULL` timestamp и обрабатываются при следующем запуске.
+**Артефакт:** после backfill таблицы `commitments`, `pending_replies`, `communication_risks` заполнены. Сообщение с невалидным LLM-ответом после N попыток попадает в quarantine, а не зацикливается. `GET /admin/quarantine` показывает список.
 
 ---
 
@@ -57,12 +58,15 @@
 ## Этап 5. Entity Knowledge Graph — извлечение
 
 **Что строится:**
-- `processing/entity_extract.py` — батчевый LLM-вызов на группу сообщений; результат — список сущностей, фактов и связей
-- `knowledge/resolution.py` — сопоставление новой сущности с существующими: embedding similarity → при > 0.85 LLM подтверждает merge
-- `db/repos/entities.py` — upsert entities, facts, relations; обновление `corroboration_count` через `entity_fact_sources`
+- `processing/entity_extract.py` — батчевый LLM-вызов; результат — список сущностей, фактов и связей
+- `knowledge/activation.py` — activation policy; `knowledge/resolution.py` — merge rules; `knowledge/superseding.py` — contradiction semantics
+- `db/repos/entities.py` — upsert с `mention_count`, проверка activation criteria
+- `db/repos/audit.py` — запись в `entity_audit_log` при каждой ручной операции
+- Optimistic locking: `version` check при activate/mute/merge (ADR-0012)
+- Evals: первый golden dataset в `evals/datasets/` для entity extraction
 - Backfill entity extraction: `WHERE entities_extracted_at IS NULL`
 
-**Артефакт:** после прогона `entity_extract` по истории чатов таблицы `entities`, `entity_facts`, `entity_relations` заполнены. Один человек, упомянутый разными именами в разных чатах, склеивается в одну запись.
+**Артефакт:** граф заполнен. Candidate/active разделены. Ручной merge записывается в audit log с `payload.before/after`. Повторный merge той же пары возвращает 409 при несовпадении `version`. Evals прогоняются и baseline зафиксирован.
 
 ---
 
@@ -98,7 +102,20 @@
 - `scheduler/setup.py` — APScheduler: summarizer раз в час
 - Экспоненциальный backoff при reconnect Telethon
 - Graceful shutdown: дождаться завершения текущего батча перед остановкой
+- `GET /status` — component-level health: telegram, db, lm_studio, scheduler, backlog по стадиям
+- `GET /admin/metrics` — realtime_lag, backlog_by_stage, llm_parse_error_rate, quarantine_size
 - `docker-compose.yml` — Postgres с pgvector, volume для `.session` файла Telethon
 - `Dockerfile`
+- `docs/runbooks/` — четыре runbook: LM Studio down, session corrupted, backlog growing, bad entity merge
 
-**Артефакт:** система запускается через `docker-compose up` и работает автономно: слушает Telegram, обрабатывает сообщения, обновляет резюме по расписанию, доступна по API. Перезапуск контейнера не теряет состояние и не создаёт дублей.
+**Артефакт:** система запускается через `docker-compose up` и работает автономно. `GET /status` показывает реальное состояние компонентов. `GET /admin/metrics` отвечает на вопрос "пайплайн работает нормально?". Runbooks покрывают четыре основных failure mode.
+
+---
+
+## Post-MVP: Durable Ingest Buffer
+
+**Зачем:** при падении Postgres новые сообщения теряются — это главный operational debt системы, честно признанный в архитектуре.
+
+**Что строится:** SQLite/WAL-файл как локальный буфер между Telethon listener и Postgres. Listener пишет в буфер атомарно; отдельный worker сбрасывает в Postgres и удаляет из буфера после подтверждения.
+
+**Артефакт:** при перезапуске Postgres сообщения не теряются — они накоплены в буфере и сброшены после восстановления соединения.

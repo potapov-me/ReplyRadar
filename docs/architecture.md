@@ -156,7 +156,12 @@ MVP: **operator-invoked workflow**.
 
 ### FastAPI — API сценариев и база знаний
 
+Мутации идут через `usecases/` (command path). Read-only запросы обращаются к `db/repos/` напрямую (query path). Подробнее: ADR-0013.
+
+Idempotency: `POST /backfill`, `POST /chats/{id}/summarize`, `POST /people/{id}/activate`, `POST /people/{a}/merge/{b}` — идемпотентны. Повторный вызов с теми же параметрами не создаёт дублей и не меняет состояние если оно уже актуально. Мутации knowledge graph принимают `expected_version` для optimistic locking (ADR-0012).
+
 ```
+# Use-case API
 GET  /today
 GET  /pending
 GET  /commitments
@@ -166,22 +171,68 @@ POST /chats/{id}/monitor
 POST /backfill
 GET  /backfill/status
 POST /chats/{id}/summarize
-GET  /status
 
-# Entity Knowledge Graph
-GET  /people                         # список людей с базовыми фактами
-GET  /people/{id}                    # профиль: факты + прямые связи
-GET  /people/{id}/connections        # транзитивный граф до N хопов
-GET  /people/{id}/timeline           # факты в хронологическом порядке
-GET  /people/{id}/messages           # сообщения, породившие факты
-GET  /people/search?q=               # поиск по имени / алиасам
-GET  /people?status=candidate        # просмотр кандидатов на активацию
-POST /people/{id}/activate           # принудительная активация
-POST /people/{id}/mute               # отключение (не удаляет данные)
-POST /people/{a}/merge/{b}           # ручная склейка двух записей
-POST /people/{a}/relate/{b}          # ручное добавление связи
-GET  /orgs/{id}                      # профиль организации
+# Health
+GET  /status                         # component-level: db, telegram, lm_studio, scheduler, backlog
+
+# Entity Knowledge Graph — query path
+GET  /people
+GET  /people/{id}
+GET  /people/{id}/connections
+GET  /people/{id}/timeline
+GET  /people/{id}/messages
+GET  /people/search?q=
+GET  /people?status=candidate
+GET  /orgs/{id}
+
+# Entity Knowledge Graph — command path (через usecases/)
+POST /people/{id}/activate
+POST /people/{id}/mute
+POST /people/{a}/merge/{b}
+POST /people/{a}/relate/{b}
+
+# Admin / operations
+GET  /admin/quarantine               # список сообщений в quarantine
+POST /admin/quarantine/{id}/reprocess
+POST /admin/quarantine/{id}/skip
+GET  /admin/entities/{id}/audit      # audit trail ручных операций
+GET  /admin/metrics                  # операционные метрики pipeline
 ```
+
+### Health model
+
+`GET /status` возвращает component-level состояние, а не просто `{"status": "ok"}`:
+
+```json
+{
+  "telegram": "connected",
+  "db": "writable",
+  "lm_studio": "reachable",
+  "scheduler": "alive",
+  "pipeline": {
+    "realtime_queue_depth": 0,
+    "backlog_classify": 12,
+    "backlog_extract": 5,
+    "backlog_entity_extract": 34,
+    "quarantine_size": 2
+  }
+}
+```
+
+Компонент считается degraded если: queue depth > порога, backlog растёт > N минут без движения, quarantine_size > 0.
+
+### Операционные метрики
+
+`GET /admin/metrics` — ключевые показатели pipeline:
+
+| Метрика | Что измеряет |
+|---------|-------------|
+| `realtime_lag_seconds` | задержка от получения сообщения до classify |
+| `backlog_by_stage` | число сообщений с NULL timestamp по каждой стадии |
+| `llm_parse_error_rate` | доля ответов LLM, не прошедших контракт |
+| `quarantine_size` | число сообщений, требующих ручного ревью |
+| `entity_activation_rate` | доля candidate → active за период |
+| `entity_merge_error_rate` | доля unmerge операций (прокси для качества resolution) |
 
 ---
 
@@ -200,6 +251,7 @@ entities
   status_changed_at timestamptz
   activated_by      text                 -- 'auto' | 'user'
   mention_count     int NOT NULL DEFAULT 0
+  version           int NOT NULL DEFAULT 1  -- optimistic locking для ручных операций
   first_seen_at     timestamptz
   updated_at        timestamptz
   embedding         vector(768)          -- для entity resolution
@@ -259,6 +311,31 @@ entity_relation_sources
   message_id  bigint FK → messages
   seen_at     timestamptz
   PRIMARY KEY (relation_id, message_id)
+
+-- Operations
+
+processing_quarantine
+  id               uuid PK
+  message_id       bigint FK → messages
+  stage            text        -- 'classify' | 'extract' | 'embed' | 'entity_extract'
+  error_class      text        -- 'transient' | 'permanent'
+  error_detail     text
+  raw_llm_response text
+  retry_count      int
+  quarantined_at   timestamptz
+  reviewed_at      timestamptz
+  resolution       text        -- 'reprocessed' | 'skipped' | 'fixed_manually'
+
+entity_audit_log
+  id            uuid PK
+  entity_id     uuid FK → entities
+  action        text        -- 'activate' | 'mute' | 'merge' | 'unmerge' | 'relate' |
+                            -- 'fact_override' | 'auto_activate'
+  actor         text        -- 'user' | 'system'
+  version_from  int
+  version_to    int
+  payload       jsonb       -- {before: {...}, after: {...}}
+  created_at    timestamptz
 
 -- Основные таблицы
 
