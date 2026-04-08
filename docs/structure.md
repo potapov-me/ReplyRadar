@@ -8,8 +8,9 @@ replyradar/
 ├── src/
 │   └── replyradar/
 │       ├── config.py              # pydantic-settings: единая точка конфигурации
-│       ├── main.py                # точка входа: собирает asyncio event loop,
-│       │                          # регистрирует FastAPI, запускает scheduler
+│       ├── main.py                # тонкий entrypoint: импортирует app из api/app.py
+│       ├── bootstrap.py           # composition root: создаёт пул, поднимает listener,
+│       │                          # engine, scheduler; wiring зависимостей только здесь
 │       │
 │       ├── db/
 │       │   ├── pool.py            # asyncpg connection pool (создаётся один раз при старте)
@@ -35,9 +36,23 @@ replyradar/
 │       │   ├── confidence.py      # effective_confidence(): формула затухания и весов
 │       │   └── graph.py           # построители транзитивных CTE-запросов
 │       │
+│       ├── usecases/              # application layer: оркестрирует repos + llm + domain-логику
+│       │   ├── today.py           # GetToday: агрегирует pending + commitments + risks
+│       │   ├── backfill.py        # RunBackfill: запускает ingestion + processing
+│       │   ├── summarize.py       # SummarizeChat
+│       │   ├── people.py          # GetPersonProfile, FindConnections
+│       │   └── digest.py          # BuildDigest
+│       │
 │       ├── llm/
-│       │   └── client.py          # единственное место вызова LiteLLM;
-│       │                          # все остальные модули импортируют только отсюда
+│       │   ├── client.py          # единственное место вызова LiteLLM
+│       │   ├── prompts/           # версионированные шаблоны промптов
+│       │   │   ├── classify_v1.txt
+│       │   │   ├── extract_v1.txt
+│       │   │   └── entity_extract_v1.txt
+│       │   └── contracts/         # Pydantic-схемы ответов LLM (типизированный контракт стадий)
+│       │       ├── classify.py
+│       │       ├── extract.py
+│       │       └── entity_extract.py
 │       │
 │       ├── summarizer/
 │       │   └── summarizer.py      # per-chat summary: по расписанию и по запросу
@@ -51,14 +66,15 @@ replyradar/
 │       │
 │       └── api/
 │           ├── app.py             # FastAPI instance, middleware, lifespan
-│           ├── deps.py            # зависимости: db session, pagination params
-│           └── routes/
+│           ├── deps.py            # зависимости: db connection, pagination params
+│           └── routes/            # маршруты вызывают только usecases/, не repos напрямую
 │               ├── chats.py       # /chats, /backfill, /today, /pending, /commitments, /risks
 │               ├── people.py      # /people — Entity Knowledge Graph API
 │               └── orgs.py        # /orgs
 │
 ├── tests/
-│   ├── conftest.py                # фикстуры: тестовая БД, моки LLM
+│   ├── conftest.py                # фикстуры: тестовая БД, моки LLM-контрактов
+│   ├── usecases/
 │   ├── processing/
 │   ├── knowledge/
 │   └── api/
@@ -84,9 +100,15 @@ replyradar/
 
 ## Ключевые принципы организации
 
+**Тонкий `main.py`, явный composition root.** `main.py` — только точка входа для uvicorn. Весь wiring (пул БД, listener, processing engine, scheduler) собирается в `bootstrap.py`. Это предотвращает god-object и делает компоненты тестируемыми независимо друг от друга.
+
+**Явный application layer.** `api/routes/`, `scheduler/`, `digest/` и `processing/` не обращаются к репозиториям напрямую. Весь сценарный код — в `usecases/`. Это граница между "что делает система" и "как технически реализовано".
+
+**Типизированные контракты LLM-стадий.** В `llm/contracts/` — Pydantic-схемы ожидаемых ответов для каждой стадии. В `llm/prompts/` — версионированные шаблоны. Поле `prompt_version` в БД ссылается на конкретный файл. Логика разбора ответа не расползается по `classify.py`, `extract.py`, `entity_extract.py`.
+
 **Один вход в LLM.** Все обращения к LiteLLM — только через `llm/client.py`. Это единственное место, где знают про `base_url`, `model`, `api_key` и политику fallback при недоступности LM Studio.
 
-**SQL скрыт в репозиториях.** Модули `processing/`, `knowledge/`, `api/` работают через `db/repos/`. Прямых SQL-запросов и обращений к пулу за пределами `db/` нет. Рекурсивные CTE, pgvector-операторы и `ON CONFLICT` пишутся как явный SQL — без ORM-обёрток.
+**SQL скрыт в репозиториях.** Прямых SQL-запросов и обращений к пулу за пределами `db/repos/` нет. Рекурсивные CTE, pgvector-операторы и `ON CONFLICT` пишутся как явный SQL — без ORM-обёрток.
 
 **Стадии processing — независимые модули.** Каждая стадия (`classify`, `extract`, `embed`, `entity_extract`) — отдельный файл с одной публичной функцией. Оркестратор в `engine.py` знает про порядок и флаги идемпотентности; стадии про оркестратор не знают.
 

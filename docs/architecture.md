@@ -144,6 +144,8 @@ MVP: **operator-invoked workflow**.
 
 **Entity resolution:** при каждом извлечении новая сущность сопоставляется с существующими по embedding similarity. При схожести > 0.85 — LLM подтверждает merge. Иначе создаётся новая запись.
 
+**Модель активации** (подробнее в ADR-0009): все сущности создаются со статусом `candidate`. По умолчанию API, поиск и дайджест работают только с `active`. Автоматическая активация — при выполнении любого из условий: прямое участие в мониторируемом чате, вовлечённость в `commitments`/`pending_replies`, упоминание в ≥ 3 сообщениях из ≥ 2 чатов. Ручное управление: `POST /people/{id}/activate`, `POST /people/{id}/mute`.
+
 **Система уверенности** (подробнее в ADR-0007):
 - `base_confidence` — оценка LLM при извлечении
 - `source_type` — self / other / inferred (весовые коэффициенты: 1.0 / 0.7 / 0.5)
@@ -173,6 +175,9 @@ GET  /people/{id}/connections        # транзитивный граф до N 
 GET  /people/{id}/timeline           # факты в хронологическом порядке
 GET  /people/{id}/messages           # сообщения, породившие факты
 GET  /people/search?q=               # поиск по имени / алиасам
+GET  /people?status=candidate        # просмотр кандидатов на активацию
+POST /people/{id}/activate           # принудительная активация
+POST /people/{id}/mute               # отключение (не удаляет данные)
 POST /people/{a}/merge/{b}           # ручная склейка двух записей
 POST /people/{a}/relate/{b}          # ручное добавление связи
 GET  /orgs/{id}                      # профиль организации
@@ -186,14 +191,18 @@ GET  /orgs/{id}                      # профиль организации
 -- Entity Knowledge Graph
 
 entities
-  id              uuid PK
-  entity_type     text NOT NULL        -- 'person' | 'organization'
-  canonical_name  text NOT NULL
-  aliases         text[]               -- альтернативные имена и написания
-  telegram_ids    bigint[]             -- TG user_id (только для person)
-  first_seen_at   timestamptz
-  updated_at      timestamptz
-  embedding       vector(768)          -- для entity resolution
+  id                uuid PK
+  entity_type       text NOT NULL        -- 'person' | 'organization'
+  canonical_name    text NOT NULL
+  aliases           text[]               -- альтернативные имена и написания
+  telegram_ids      bigint[]             -- TG user_id (только для person)
+  status            text NOT NULL DEFAULT 'candidate'  -- 'candidate' | 'active' | 'muted'
+  status_changed_at timestamptz
+  activated_by      text                 -- 'auto' | 'user'
+  mention_count     int NOT NULL DEFAULT 0
+  first_seen_at     timestamptz
+  updated_at        timestamptz
+  embedding         vector(768)          -- для entity resolution
 
 entity_facts
   id                  uuid PK
