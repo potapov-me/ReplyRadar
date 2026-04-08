@@ -9,10 +9,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 uv sync
 
 # Запустить API
-uvicorn main:app --reload
+uvicorn src.replyradar.main:app --reload
 
 # Запустить дайджест (CLI)
 python -m replyradar digest
+
+# Создать миграцию Alembic
+alembic revision --autogenerate -m "описание"
+
+# Применить миграции
+alembic upgrade head
 ```
 
 ## Архитектура
@@ -118,4 +124,5 @@ GET  /orgs/{id}                  # профиль организации
 ### Документация
 
 - [Архитектура](./docs/architecture.md) — детальное описание всех компонентов и схемы БД
+- [Файловая структура](./docs/structure.md) — организация кодовой базы и ключевые принципы
 - [ADR](./docs/adr/README.md) — архитектурные решения (local-first, Postgres, single-process, local LLM, use-case API, entity graph, confidence scoring)
