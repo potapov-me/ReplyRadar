@@ -31,9 +31,11 @@ replyradar/
 │       │   ├── embed.py           # стадия Embed → pgvector
 │       │   └── entity_extract.py  # стадия EntityExtract → батчевый вызов LLM
 │       │
-│       ├── knowledge/
-│       │   ├── resolution.py      # entity resolution: embedding similarity + LLM merge
+│       ├── knowledge/             # domain rules knowledge-домена (тактический DDD)
+│       │   ├── activation.py      # activation policy: критерии candidate → active
 │       │   ├── confidence.py      # effective_confidence(): формула затухания и весов
+│       │   ├── resolution.py      # merge rules: entity resolution + safe-unmerge
+│       │   ├── superseding.py     # semantics: когда факт supersedes другой, обновление счётчиков
 │       │   └── graph.py           # построители транзитивных CTE-запросов
 │       │
 │       ├── usecases/              # application layer: оркестрирует repos + llm + domain-логику
@@ -99,6 +101,8 @@ replyradar/
 ```
 
 ## Ключевые принципы организации
+
+**Границы контекстов — через импорты.** Три запрещённых направления: `processing/` не импортирует из `usecases/` и `api/`; `api/routes/` не импортирует из `db/repos/` напрямую; `knowledge/` не знает о `processing/` и `api/`. Нарушение видно на code review как запрещённый импорт.
 
 **Тонкий `main.py`, явный composition root.** `main.py` — только точка входа для uvicorn. Весь wiring (пул БД, listener, processing engine, scheduler) собирается в `bootstrap.py`. Это предотвращает god-object и делает компоненты тестируемыми независимо друг от друга.
 
