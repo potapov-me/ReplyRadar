@@ -126,5 +126,6 @@ GET  /orgs/{id}                  # профиль организации
 - [Архитектура](./docs/architecture.md) — детальное описание всех компонентов и схемы БД
 - [Файловая структура](./docs/structure.md) — организация кодовой базы и ключевые принципы
 - [Глоссарий](./docs/glossary.md) — ubiquitous language: термины домена
+- [Evals](./evals/README.md) — методология оценки качества LLM-стадий, annotation protocol
 - [План разработки](./docs/plan.md) — этапы с артефактами
 - [ADR](./docs/adr/README.md) — архитектурные решения (local-first, Postgres, single-process, local LLM, use-case API, entity graph, confidence scoring, asyncpg, tactical DDD, quarantine, audit trail, CQRS-lite, policy-as-code)
