@@ -5,7 +5,10 @@
 - [Архитектура](./architecture.md) — текущая целевая архитектура MVP
 - [Файловая структура](./structure.md) — организация кодовой базы и ключевые принципы
 - [Глоссарий](./glossary.md) — ubiquitous language: термины домена
-- [Evals](../evals/README.md) — методология оценки качества LLM-стадий
+- [Evals](./evals.md) — процесс оценки качества LLM-стадий, что блокирует merge
+- [Manual Ops](./manual-ops.md) — activate, mute, merge, unmerge, relate: последствия и API
+- [Observability](./observability.md) — метрики, пороги, интерпретация /status и /admin/metrics
+- [Data Invariants](./data-invariants.md) — инварианты данных и SQL-проверки
 - [План разработки](./plan.md) — этапы с артефактами
 - [Разбор](./review.md) — архитектурный разбор и остаточные риски
 - [Карта пользовательского пути](./cjm.md) — ключевые сценарии использования

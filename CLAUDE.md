@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Установить зависимости
-uv sync
+# Установить зависимости (включая dev)
+uv sync --extra dev
 
 # Запустить API
 uvicorn src.replyradar.main:app --reload
@@ -19,6 +19,18 @@ alembic revision --autogenerate -m "описание"
 
 # Применить миграции
 alembic upgrade head
+
+# Статический анализ
+ruff format src/ && ruff check src/ --fix   # форматирование + линтинг
+mypy src/                                    # проверка типов
+pyright src/                                 # дополнительная проверка типов
+bandit -r src/ -ll                           # безопасность (medium и выше)
+lint-imports                                 # проверка границ импортов (import-linter)
+
+# Evals
+python -m replyradar eval classify
+python -m replyradar eval extract
+python -m replyradar eval classify --update-baseline
 ```
 
 ## Архитектура

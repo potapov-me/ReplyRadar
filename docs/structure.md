@@ -40,12 +40,12 @@ replyradar/
 │       │   ├── superseding.py     # semantics: когда факт supersedes другой, обновление счётчиков
 │       │   └── graph.py           # построители транзитивных CTE-запросов
 │       │
-│       ├── usecases/              # application layer: оркестрирует repos + llm + domain-логику
-│       │   ├── today.py           # GetToday: агрегирует pending + commitments + risks
-│       │   ├── backfill.py        # RunBackfill: запускает ingestion + processing
-│       │   ├── summarize.py       # SummarizeChat
+│       ├── usecases/              # orchestration: решает что, когда и зачем — не как
+│       │   ├── today.py           # агрегирует pending + commitments + risks
+│       │   ├── backfill.py        # запускает ingestion + processing
+│       │   ├── summarize.py       # решает что суммаризировать → вызывает summarizer/
 │       │   ├── people.py          # GetPersonProfile, FindConnections
-│       │   └── digest.py          # BuildDigest
+│       │   └── digest.py          # решает что включать в дайджест → вызывает digest/
 │       │
 │       ├── llm/
 │       │   ├── client.py          # единственное место вызова LiteLLM
@@ -59,11 +59,13 @@ replyradar/
 │       │       └── entity_extract.py
 │       │
 │       ├── summarizer/
-│       │   └── summarizer.py      # per-chat summary: по расписанию и по запросу
+│       │   └── summarizer.py      # техника: LLM-вызов + запись в chat_summaries.
+│       │                          # НЕ решает когда и зачем суммаризировать — это usecases/summarize.py
 │       │
 │       ├── digest/
-│       │   ├── generator.py       # строит текст дайджеста из read-model
-│       │   └── bot.py             # доставка в Telegram Bot
+│       │   ├── generator.py       # техника: сборка текста дайджеста из read-model
+│       │   └── bot.py             # техника: доставка текста в Telegram Bot.
+│       │                          # НЕ решает что включать и когда запускать — это usecases/digest.py
 │       │
 │       ├── scheduler/
 │       │   └── setup.py           # APScheduler: summarizer раз в час
@@ -73,7 +75,7 @@ replyradar/
 │           ├── deps.py            # зависимости: db connection, pagination params
 │           └── routes/
 │               ├── chats.py       # /chats, /backfill, /today, /pending, /commitments, /risks
-│               ├── people.py      # /people — query path напрямую в repos; команды через usecases/
+│               ├── people.py      # /people — reads: db/repos напрямую; mutations: usecases/
 │               ├── orgs.py        # /orgs
 │               └── admin.py       # /admin/quarantine, /admin/metrics, /admin/entities/{id}/audit
 │
@@ -113,13 +115,15 @@ replyradar/
 
 ## Ключевые принципы организации
 
-**Границы контекстов — через импорты.** Три запрещённых направления: `processing/` не импортирует из `usecases/` и `api/`; `api/routes/` не импортирует из `db/repos/` напрямую; `knowledge/` не знает о `processing/` и `api/`. Нарушение видно на code review как запрещённый импорт.
+**Границы контекстов — через импорты.** Запрещённые направления: `processing/` не импортирует из `usecases/` и `api/`; `knowledge/` не знает о `processing/` и `api/`. Нарушение автоматически проверяется через `import-linter` (ADR-0015).
 
 **Тонкий `main.py`, явный composition root.** `main.py` — только точка входа для uvicorn. Весь wiring (пул БД, listener, processing engine, scheduler) собирается в `bootstrap.py`. Это предотвращает god-object и делает компоненты тестируемыми независимо друг от друга.
 
-**Явный application layer.** `api/routes/`, `scheduler/`, `digest/` и `processing/` не обращаются к репозиториям напрямую. Весь сценарный код — в `usecases/`. Это граница между "что делает система" и "как технически реализовано".
+**Command/query split.** Мутации (`insert_*`, `update_*`, `delete_*`, `upsert_*`) — только через `usecases/`. Read-запросы (`get_*`, `list_*`, `find_*`) из `api/routes/` могут идти напрямую в `db/repos/` без промежуточного use-case. Подробнее: ADR-0013.
 
 **Типизированные контракты LLM-стадий.** В `llm/contracts/` — Pydantic-схемы ожидаемых ответов для каждой стадии. В `llm/prompts/` — версионированные шаблоны. Поле `prompt_version` в БД ссылается на конкретный файл. Логика разбора ответа не расползается по `classify.py`, `extract.py`, `entity_extract.py`.
+
+**`summarizer/` и `digest/` — техническая реализация, не оркестрация.** Эти пакеты содержат только "как": построить текст, вызвать LLM, отправить в бот. Решения "что включать", "когда запускать", "что делать при ошибке" — в `usecases/summarize.py` и `usecases/digest.py`. `summarizer/` и `digest/` не импортируют из `usecases/` и не знают о расписании.
 
 **Один вход в LLM.** Все обращения к LiteLLM — только через `llm/client.py`. Это единственное место, где знают про `base_url`, `model`, `api_key` и политику fallback при недоступности LM Studio.
 

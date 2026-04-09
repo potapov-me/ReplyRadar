@@ -9,3 +9,35 @@ dependencies = [
     "asyncpg>=0.30.0",
     "alembic>=1.16.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.9.0",
+    "mypy>=1.15.0",
+    "pyright>=1.1.0",
+    "bandit>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.25.0",
+    "import-linter>=2.1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = false
+warn_return_any = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["replyradar.knowledge.*", "replyradar.db.repos.*"]
+strict = true
+
+[tool.bandit]
+exclude_dirs = [".venv", "tests"]
+skips = ["B101"]
