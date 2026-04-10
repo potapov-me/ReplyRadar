@@ -26,11 +26,13 @@ dev = [
     "ruff>=0.9.0",
     "mypy>=1.15.0",
     "pyright>=1.1.0",
+    "pylint>=3.0.0",
     "bandit>=1.8.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.25.0",
     "import-linter>=2.1.0",
-    "types-pyyaml>=6.0",
+    "asyncpg-stubs>=0.31.0",
+    "types-PyYAML>=6.0",
 ]
 
 [tool.ruff]
@@ -57,6 +59,22 @@ ignore_missing_imports = true
 [tool.bandit]
 exclude_dirs = [".venv", "tests"]
 skips = ["B101"]
+
+[tool.pylint.main]
+source-roots = ["src"]
+
+[tool.pylint.messages_control]
+# Отключаем то, что покрывает ruff или противоречит проекту
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-few-public-methods",
+    "fixme",
+]
+
+[tool.pylint.format]
+max-line-length = 100
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

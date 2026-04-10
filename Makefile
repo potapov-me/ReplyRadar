@@ -68,8 +68,9 @@ format: ## Форматировать код (ruff format + fix)
 	uv run ruff format src/ tests/
 	uv run ruff check src/ tests/ --fix
 
-lint: ## Проверить стиль и границы импортов
+lint: ## Проверить стиль, pylint и границы импортов
 	uv run ruff check src/ tests/
+	uv run pylint src/
 	uv run lint-imports
 
 typecheck: ## Проверить типы (mypy + pyright)

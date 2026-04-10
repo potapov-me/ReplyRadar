@@ -33,7 +33,7 @@ async def create_components() -> dict[str, Any]:
     db_error: str | None = None
     try:
         pool = await create_pool(settings.database.url)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         db_error = str(exc)
         logger.warning("БД недоступна при старте: %s", exc)
 

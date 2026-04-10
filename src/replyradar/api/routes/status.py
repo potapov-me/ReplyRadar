@@ -22,7 +22,7 @@ async def get_status(request: Request) -> dict[str, Any]:
         try:
             await pool.fetchval("SELECT 1")
             db_status = "writable"
-        except Exception:  # noqa: BLE001
+        except Exception:  # pylint: disable=broad-exception-caught
             db_status = "error"
 
     # ── backlog из БД (нули при недоступной базе) ─────────────────────────────
@@ -61,7 +61,7 @@ async def get_status(request: Request) -> dict[str, Any]:
             queue = getattr(request.app.state, "queue", None)
             if queue is not None:
                 pipeline["realtime_queue_depth"] = queue.qsize()
-        except Exception:  # noqa: BLE001
+        except Exception:  # pylint: disable=broad-exception-caught
             # Таблицы ещё не созданы — нормально до первого alembic upgrade head
             pass
 
