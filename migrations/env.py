@@ -19,10 +19,11 @@ target_metadata = None
 
 
 def _get_url() -> str:
-    # DATABASE_URL env var переопределяет alembic.ini (asyncpg-формат)
-    url = os.environ.get("DATABASE_URL")
+    # Единый источник DSN: DATABASE__URL (pydantic-settings, приоритет) > DATABASE_URL > alembic.ini
+    # DATABASE__URL — формат pydantic-settings с разделителем __, используется приложением
+    url = os.environ.get("DATABASE__URL") or os.environ.get("DATABASE_URL")
     if url:
-        # Нормализуем схему для asyncpg
+        # Нормализуем схему для asyncpg (SQLAlchemy async driver)
         return url.replace("postgresql://", "postgresql+asyncpg://", 1)
     return config.get_main_option("sqlalchemy.url")  # type: ignore[return-value]
 

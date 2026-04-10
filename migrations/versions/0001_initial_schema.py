@@ -14,6 +14,10 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # pgcrypto — источник gen_random_uuid() на Postgres < 13.
+    # На Postgres 13+ функция встроена, но расширение безвредно.
+    # vector — pgvector, обязателен для столбцов vector(768).
+    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     # ── chats ────────────────────────────────────────────────────────────────

@@ -10,7 +10,8 @@ from .routes import status
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     components = await create_components()
-    app.state.pool = components["pool"]
+    app.state.pool = components["pool"]  # asyncpg.Pool | None
+    app.state.db_error = components["db_error"]  # str | None
     try:
         yield
     finally:
