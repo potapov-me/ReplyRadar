@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 _BACKFILL_POLL_INTERVAL = 5.0  # секунд между проверками backlog
 
+# Sentinel: _run_stage возвращает этот объект при ошибке/quarantine,
+# чтобы отличить "стадия вернула None (void)" от "стадия не прошла".
+_STAGE_FAILED: object = object()
+
 
 class ProcessingEngine:
     """Запускает и координирует realtime и backfill обработку сообщений."""
@@ -108,7 +112,7 @@ class ProcessingEngine:
                        m.embedded_at, m.extracted_at
                 FROM messages m
                 WHERE m.classified_at IS NULL
-                   OR (m.embedded_at IS NULL AND m.embed_error IS NULL)
+                   OR m.embedded_at IS NULL
                    OR (m.is_signal = true AND m.extracted_at IS NULL)
                 ORDER BY m.timestamp ASC
                 LIMIT $1
@@ -122,19 +126,18 @@ class ProcessingEngine:
 
             for row in rows:
                 if not self._queue.empty():
-                    break  # передаём управление realtime
+                    break
 
                 try:
                     await self._process_row(dict(row))
                 except Exception:  # pylint: disable=broad-exception-caught
                     logger.exception("backfill: необработанная ошибка msg_id=%d", row["id"])
 
-            await asyncio.sleep(0)  # yield event loop
+            await asyncio.sleep(0)
 
     # ── processing ────────────────────────────────────────────────────────────
 
     async def _process_message(self, msg_id: int) -> None:
-        """Загружает сообщение из БД и обрабатывает."""
         row = await self._pool.fetchrow(
             """
             SELECT id, chat_id, text, sender_name,
@@ -157,10 +160,10 @@ class ProcessingEngine:
 
         # ── Classify ─────────────────────────────────────────────────────────
         if row["classified_at"] is None:
-            is_signal = await self._run_stage(
+            result = await self._run_stage(
                 msg_id=msg_id,
                 stage="classify",
-                coro=run_classify(
+                make_coro=lambda: run_classify(
                     self._pool,
                     message_id=msg_id,
                     text=text,
@@ -171,21 +174,23 @@ class ProcessingEngine:
                     self._pool, message_id=msg_id, error=err
                 ),
             )
-            if is_signal is None:
+            if result is _STAGE_FAILED:
                 return
-            row["is_signal"] = is_signal
+            row["is_signal"] = result  # bool
 
         # ── Embed ─────────────────────────────────────────────────────────────
         if row["embedded_at"] is None:
             result = await self._run_stage(
                 msg_id=msg_id,
                 stage="embed",
-                coro=run_embed(self._pool, message_id=msg_id, text=text, llm=self._llm),
+                make_coro=lambda: run_embed(
+                    self._pool, message_id=msg_id, text=text, llm=self._llm
+                ),
                 mark_error=lambda err: mark_embed_error(
                     self._pool, message_id=msg_id, error=err
                 ),
             )
-            if result is None:
+            if result is _STAGE_FAILED:
                 return
 
         # ── Extract (только для сигналов) ─────────────────────────────────────
@@ -193,7 +198,7 @@ class ProcessingEngine:
             await self._run_stage(
                 msg_id=msg_id,
                 stage="extract",
-                coro=run_extract(
+                make_coro=lambda: run_extract(
                     self._pool,
                     message_id=msg_id,
                     chat_id=chat_id,
@@ -211,20 +216,22 @@ class ProcessingEngine:
         *,
         msg_id: int,
         stage: str,
-        coro: Coroutine[Any, Any, Any],
+        make_coro: Callable[[], Coroutine[Any, Any, Any]],
         mark_error: Callable[[LLMError], Coroutine[Any, Any, None]],
     ) -> Any:
         """Запускает стадию с обработкой ошибок и quarantine-логикой.
 
-        Возвращает результат корутины при успехе, None при ошибке.
+        Возвращает результат корутины при успехе (может быть None для void).
+        Возвращает _STAGE_FAILED при ошибке или quarantine.
+        Корутина создаётся лениво — только если стадия не в quarantine.
         """
         from ..db.repos import quarantine as quarantine_repo
 
         if await quarantine_repo.is_quarantined(self._pool, message_id=msg_id, stage=stage):
-            return None
+            return _STAGE_FAILED
 
         try:
-            result = await coro
+            result = await make_coro()
             self._retry_counts.pop((msg_id, stage), None)
             return result
         except PermanentLLMError as exc:
@@ -240,7 +247,7 @@ class ProcessingEngine:
                 raw_llm_response=None,
                 retry_count=count,
             )
-            return None
+            return _STAGE_FAILED
         except TransientLLMError as exc:
             count = self._retry_counts.get((msg_id, stage), 0) + 1
             self._retry_counts[(msg_id, stage)] = count
@@ -260,7 +267,7 @@ class ProcessingEngine:
                     retry_count=count,
                 )
                 self._retry_counts.pop((msg_id, stage), None)
-            return None
+            return _STAGE_FAILED
         except LLMError as exc:
             logger.error("unknown LLM error msg_id=%d stage=%s: %s", msg_id, stage, exc)
             await mark_error(exc)
@@ -273,4 +280,4 @@ class ProcessingEngine:
                 raw_llm_response=None,
                 retry_count=0,
             )
-            return None
+            return _STAGE_FAILED
