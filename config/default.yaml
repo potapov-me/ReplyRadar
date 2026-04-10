@@ -31,7 +31,7 @@ processing:
 # LLM через LM Studio (ADR-0004)
 llm:
   base_url: http://host.docker.internal:1234/v1
-  model: local-model
+  model: qwen/qwen3.5-9b
   api_key: lm-studio
 
 # Embeddings через LM Studio

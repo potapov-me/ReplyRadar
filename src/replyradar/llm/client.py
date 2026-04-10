@@ -54,7 +54,17 @@ class LLMError(Exception):
 
 
 class TransientLLMError(LLMError):
-    """Временная ошибка: timeout, сеть, Postgres-сброс соединения."""
+    """Временная ошибка конкретного сообщения: rate limit, разовый сбой."""
+
+    error_class = "transient"
+
+
+class LLMUnavailableError(TransientLLMError):
+    """LLM-сервис недоступен целиком: не запущен, нет модели, обрыв соединения.
+
+    Отличие от TransientLLMError: проблема не в конкретном сообщении, а в инфраструктуре.
+    Engine при получении этой ошибки должен остановить обработку и ждать восстановления.
+    """
 
     error_class = "transient"
 
@@ -72,6 +82,12 @@ _TRANSIENT_EXCEPTIONS = (
     litellm.APIConnectionError,  # type: ignore[attr-defined]
     litellm.RateLimitError,  # type: ignore[attr-defined]
     litellm.InternalServerError,  # type: ignore[attr-defined]
+)
+
+# Фрагменты сообщений об ошибках LM Studio, которые являются временными,
+# но приходят как BadRequestError (HTTP 400)
+_TRANSIENT_LM_STUDIO_MESSAGES = (
+    "No models loaded",  # модель не загружена, но LM Studio запущена
 )
 
 
@@ -149,6 +165,7 @@ class LLMClient:
         Raises:
             TransientLLMError / PermanentLLMError.
         """
+        t0 = time.monotonic()
         try:
             response = await litellm.aembedding(
                 model=_emb_model_str(self._emb),
@@ -156,16 +173,31 @@ class LLMClient:
                 api_base=self._emb.base_url,
                 api_key="lm-studio",
             )
-            return list(response.data[0]["embedding"])
+            vector: list[float] = list(response.data[0]["embedding"])
+            logger.info(
+                "llm.embed ok duration=%.3fs dims=%d model=%s",
+                time.monotonic() - t0,
+                len(vector),
+                self._emb.model,
+            )
+            return vector
         except _TRANSIENT_EXCEPTIONS as exc:
-            raise TransientLLMError(f"embedding transient: {exc}") from exc
+            logger.critical("llm unavailable stage=embed duration=%.3fs: %s", time.monotonic() - t0, exc)
+            raise LLMUnavailableError(f"embedding unavailable: {exc}") from exc
         except Exception as exc:
+            if any(msg in str(exc) for msg in _TRANSIENT_LM_STUDIO_MESSAGES):
+                logger.critical(
+                    "llm unavailable stage=embed duration=%.3fs: %s", time.monotonic() - t0, exc
+                )
+                raise LLMUnavailableError(f"embedding unavailable: {exc}") from exc
+            logger.warning("llm.embed permanent duration=%.3fs: %s", time.monotonic() - t0, exc)
             raise PermanentLLMError(f"embedding permanent: {exc}") from exc
 
     # ── internal ──────────────────────────────────────────────────────────────
 
-    async def _complete(self, system: str, user: str) -> str:
+    async def _complete(self, system: str, user: str, *, stage: str = "complete") -> str:
         """Вызывает LLM и возвращает текст ответа."""
+        t0 = time.monotonic()
         try:
             resp: Any = await litellm.acompletion(
                 model=_llm_model_str(self._llm),
@@ -177,10 +209,37 @@ class LLMClient:
                 api_key=self._llm.api_key,
                 temperature=0.0,
             )
+            duration = time.monotonic() - t0
+            usage = getattr(resp, "usage", None)
+            if usage:
+                logger.info(
+                    "llm.%s ok duration=%.3fs tokens_in=%d tokens_out=%d model=%s",
+                    stage,
+                    duration,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    self._llm.model,
+                )
+            else:
+                logger.info("llm.%s ok duration=%.3fs model=%s", stage, duration, self._llm.model)
             return resp.choices[0].message.content or ""
         except _TRANSIENT_EXCEPTIONS as exc:
-            raise TransientLLMError(f"completion transient: {exc}") from exc
+            logger.critical(
+                "llm unavailable stage=%s duration=%.3fs: %s", stage, time.monotonic() - t0, exc
+            )
+            raise LLMUnavailableError(f"completion unavailable: {exc}") from exc
         except Exception as exc:
+            if any(msg in str(exc) for msg in _TRANSIENT_LM_STUDIO_MESSAGES):
+                logger.critical(
+                    "llm unavailable stage=%s duration=%.3fs: %s",
+                    stage,
+                    time.monotonic() - t0,
+                    exc,
+                )
+                raise LLMUnavailableError(f"completion unavailable: {exc}") from exc
+            logger.warning(
+                "llm.%s permanent duration=%.3fs: %s", stage, time.monotonic() - t0, exc
+            )
             raise PermanentLLMError(f"completion permanent: {exc}") from exc
 
     @staticmethod

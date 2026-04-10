@@ -20,7 +20,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from replyradar.db.repos import quarantine as quarantine_repo
-from replyradar.llm.client import LLMError, PermanentLLMError, TransientLLMError
+from replyradar.llm.client import LLMError, LLMUnavailableError, PermanentLLMError, TransientLLMError
 from replyradar.processing.classify import mark_classify_error, run_classify
 from replyradar.processing.embed import mark_embed_error, run_embed
 from replyradar.processing.extract import mark_extract_error, run_extract
@@ -102,6 +102,8 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
 
             try:
                 await self._process_message(msg_id)
+            except LLMUnavailableError:
+                await self._wait_for_llm()
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.exception("realtime: необработанная ошибка msg_id=%d", msg_id)
             finally:
@@ -117,30 +119,34 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                 """
                 SELECT m.id
                 FROM messages m
-                WHERE m.classified_at IS NULL
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM processing_quarantine q
-                      WHERE q.message_id = m.id
-                        AND q.stage = 'classify'
-                        AND q.reviewed_at IS NULL
-                  )
-                   OR m.embedded_at IS NULL
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM processing_quarantine q
-                      WHERE q.message_id = m.id
-                        AND q.stage = 'embed'
-                        AND q.reviewed_at IS NULL
-                  )
-                   OR (m.is_signal = true AND m.extracted_at IS NULL)
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM processing_quarantine q
-                      WHERE q.message_id = m.id
-                        AND q.stage = 'extract'
-                        AND q.reviewed_at IS NULL
-                  )
+                WHERE (
+                    m.classified_at IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM processing_quarantine q
+                        WHERE q.message_id = m.id
+                          AND q.stage = 'classify'
+                          AND q.reviewed_at IS NULL
+                    )
+                ) OR (
+                    m.classified_at IS NOT NULL
+                    AND m.embedded_at IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM processing_quarantine q
+                        WHERE q.message_id = m.id
+                          AND q.stage = 'embed'
+                          AND q.reviewed_at IS NULL
+                    )
+                ) OR (
+                    m.classified_at IS NOT NULL
+                    AND m.is_signal = true
+                    AND m.extracted_at IS NULL
+                    AND NOT EXISTS (
+                        SELECT 1 FROM processing_quarantine q
+                        WHERE q.message_id = m.id
+                          AND q.stage = 'extract'
+                          AND q.reviewed_at IS NULL
+                    )
+                )
                 ORDER BY m.timestamp ASC
                 LIMIT $1
                 """,
@@ -166,6 +172,9 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
 
                 try:
                     await self._process_message(row["id"])
+                except LLMUnavailableError:
+                    await self._wait_for_llm()
+                    break  # перезапускаем батч со свежим SELECT
                 except Exception:  # pylint: disable=broad-exception-caught
                     logger.exception("backfill: необработанная ошибка msg_id=%d", row["id"])
 
@@ -270,6 +279,17 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                 mark_error=lambda err: mark_extract_error(self._pool, message_id=msg_id, error=err),
             )
 
+    async def _wait_for_llm(self) -> None:
+        """Блокирует обработку до восстановления LLM. Опрашивает health с экспоненциальным backoff."""
+        wait = 5.0
+        while self._running:
+            await asyncio.sleep(wait)
+            if await self._llm.check_health():
+                logger.info("LLM восстановлена, возобновляем обработку")
+                return
+            wait = min(wait * 2, 60.0)
+            logger.critical("LLM недоступна, следующая проверка через %.0f сек", wait)
+
     async def _run_stage(
         self,
         *,
@@ -282,6 +302,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
 
         Возвращает результат корутины при успехе (может быть None для void).
         Возвращает _STAGE_FAILED при ошибке или quarantine.
+        LLMUnavailableError пробрасывается наверх без retry/quarantine — engine останавливает батч.
         Корутина создаётся лениво — только если стадия не в quarantine.
         """
         if await quarantine_repo.is_quarantined(self._pool, message_id=msg_id, stage=stage):
@@ -291,6 +312,8 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
             result = await make_coro()
             self._retry_counts.pop((msg_id, stage), None)
             return result
+        except LLMUnavailableError:
+            raise  # engine остановит батч и подождёт восстановления
         except PermanentLLMError as exc:
             logger.warning("permanent error msg_id=%d stage=%s: %s", msg_id, stage, exc)
             await mark_error(exc)
