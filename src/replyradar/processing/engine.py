@@ -19,6 +19,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
+from ..db.repos import quarantine as quarantine_repo
 from ..llm.client import LLMError, PermanentLLMError, TransientLLMError
 from .classify import mark_classify_error, run_classify
 from .embed import mark_embed_error, run_embed
@@ -41,7 +42,7 @@ _BACKFILL_POLL_INTERVAL = 5.0  # секунд между проверками ba
 _STAGE_FAILED: object = object()
 
 
-class ProcessingEngine:
+class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
     """Запускает и координирует realtime и backfill обработку сообщений."""
 
     def __init__(
@@ -186,9 +187,7 @@ class ProcessingEngine:
                 make_coro=lambda: run_embed(
                     self._pool, message_id=msg_id, text=text, llm=self._llm
                 ),
-                mark_error=lambda err: mark_embed_error(
-                    self._pool, message_id=msg_id, error=err
-                ),
+                mark_error=lambda err: mark_embed_error(self._pool, message_id=msg_id, error=err),
             )
             if result is _STAGE_FAILED:
                 return
@@ -206,9 +205,7 @@ class ProcessingEngine:
                     sender_name=sender_name,
                     llm=self._llm,
                 ),
-                mark_error=lambda err: mark_extract_error(
-                    self._pool, message_id=msg_id, error=err
-                ),
+                mark_error=lambda err: mark_extract_error(self._pool, message_id=msg_id, error=err),
             )
 
     async def _run_stage(
@@ -225,8 +222,6 @@ class ProcessingEngine:
         Возвращает _STAGE_FAILED при ошибке или quarantine.
         Корутина создаётся лениво — только если стадия не в quarantine.
         """
-        from ..db.repos import quarantine as quarantine_repo
-
         if await quarantine_repo.is_quarantined(self._pool, message_id=msg_id, stage=stage):
             return _STAGE_FAILED
 
@@ -253,7 +248,11 @@ class ProcessingEngine:
             self._retry_counts[(msg_id, stage)] = count
             logger.warning(
                 "transient error msg_id=%d stage=%s attempt=%d/%d: %s",
-                msg_id, stage, count, self._max_retries, exc,
+                msg_id,
+                stage,
+                count,
+                self._max_retries,
+                exc,
             )
             await mark_error(exc)
             if count >= self._max_retries:

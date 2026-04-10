@@ -10,6 +10,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ..db.repos import signals as signals_repo
 from ..llm.client import LLMError, TransientLLMError
 
 if TYPE_CHECKING:
@@ -23,7 +24,7 @@ PROMPT_VERSION = "extract-v1"
 MODEL_TAG = "local-model"
 
 
-async def run_extract(
+async def run_extract(  # pylint: disable=too-many-arguments
     pool: asyncpg.Pool,
     *,
     message_id: int,
@@ -37,8 +38,6 @@ async def run_extract(
     Raises:
         LLMError: пробрасывает вызывающему.
     """
-    from ..db.repos import signals as signals_repo
-
     if not text:
         await _mark_success(pool, message_id=message_id)
         return

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import asyncpg
 
 
-async def send_to_quarantine(
+async def send_to_quarantine(  # pylint: disable=too-many-arguments
     pool: asyncpg.Pool,
     *,
     message_id: int,

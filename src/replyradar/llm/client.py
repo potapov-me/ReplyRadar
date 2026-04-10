@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import litellm
 from pydantic import ValidationError
@@ -77,7 +77,7 @@ class LLMClient:
                 model=_emb_model_str(self._emb),
                 input=["ping"],
                 api_base=self._emb.base_url,
-                api_key=self._emb.api_key if hasattr(self._emb, "api_key") else "lm-studio",
+                api_key="lm-studio",
             )
             return True
         except Exception:  # pylint: disable=broad-exception-caught
@@ -134,7 +134,7 @@ class LLMClient:
     async def _complete(self, system: str, user: str) -> str:
         """Вызывает LLM и возвращает текст ответа."""
         try:
-            response = await litellm.acompletion(
+            resp: Any = await litellm.acompletion(
                 model=_llm_model_str(self._llm),
                 messages=[
                     {"role": "system", "content": system},
@@ -144,7 +144,7 @@ class LLMClient:
                 api_key=self._llm.api_key,
                 temperature=0.0,
             )
-            return response.choices[0].message.content or ""
+            return resp.choices[0].message.content or ""
         except _TRANSIENT_EXCEPTIONS as exc:
             raise TransientLLMError(f"completion transient: {exc}") from exc
         except Exception as exc:

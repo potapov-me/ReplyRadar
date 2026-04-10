@@ -26,7 +26,7 @@ def _fingerprint(*parts: object) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
-async def upsert_commitment(
+async def upsert_commitment(  # pylint: disable=too-many-arguments
     pool: asyncpg.Pool,
     *,
     chat_id: int,
@@ -58,7 +58,7 @@ async def upsert_commitment(
     )
 
 
-async def upsert_pending_reply(
+async def upsert_pending_reply(  # pylint: disable=too-many-arguments
     pool: asyncpg.Pool,
     *,
     chat_id: int,
@@ -87,7 +87,7 @@ async def upsert_pending_reply(
     )
 
 
-async def upsert_communication_risk(
+async def upsert_communication_risk(  # pylint: disable=too-many-arguments
     pool: asyncpg.Pool,
     *,
     chat_id: int,
