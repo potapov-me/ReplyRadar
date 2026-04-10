@@ -10,8 +10,8 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ..db.repos import signals as signals_repo
-from ..llm.client import LLMError, TransientLLMError
+from replyradar.db.repos import signals as signals_repo
+from replyradar.llm.client import LLMError, TransientLLMError
 
 if TYPE_CHECKING:
     import asyncpg

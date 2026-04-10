@@ -19,11 +19,11 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
-from ..db.repos import quarantine as quarantine_repo
-from ..llm.client import LLMError, PermanentLLMError, TransientLLMError
-from .classify import mark_classify_error, run_classify
-from .embed import mark_embed_error, run_embed
-from .extract import mark_extract_error, run_extract
+from replyradar.db.repos import quarantine as quarantine_repo
+from replyradar.llm.client import LLMError, PermanentLLMError, TransientLLMError
+from replyradar.processing.classify import mark_classify_error, run_classify
+from replyradar.processing.embed import mark_embed_error, run_embed
+from replyradar.processing.extract import mark_extract_error, run_extract
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Coroutine

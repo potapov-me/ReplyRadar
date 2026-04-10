@@ -16,8 +16,8 @@ from typing import TYPE_CHECKING, Any
 
 from telethon.tl.types import Message
 
-from ..db.repos import chats as chats_repo
-from ..db.repos import messages as messages_repo
+from replyradar.db.repos import chats as chats_repo
+from replyradar.db.repos import messages as messages_repo
 
 if TYPE_CHECKING:
     import asyncpg

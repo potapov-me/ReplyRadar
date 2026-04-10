@@ -5,10 +5,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ...config import get_settings
-from ...ingestion.tg_export_parser import parse_export
-from ...usecases import imports as imports_uc
-from ..deps import Pool  # noqa: TC001
+from replyradar.api.deps import Pool  # noqa: TC001
+from replyradar.config import get_settings
+from replyradar.ingestion.tg_export_parser import parse_export
+from replyradar.usecases import imports as imports_uc
 
 router = APIRouter()
 

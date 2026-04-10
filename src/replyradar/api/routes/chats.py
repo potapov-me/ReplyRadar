@@ -5,9 +5,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from ...ingestion.listener import TelegramResolveError
-from ...usecases import chats as chats_uc
-from ..deps import Pool  # noqa: TC001  # FastAPI evaluates this at runtime via get_type_hints()
+from replyradar.api.deps import Pool  # noqa: TC001  # FastAPI evaluates this at runtime via get_type_hints()
+from replyradar.ingestion.listener import TelegramResolveError
+from replyradar.usecases import chats as chats_uc
 
 router = APIRouter()
 

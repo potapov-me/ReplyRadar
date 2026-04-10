@@ -9,12 +9,12 @@ from typing import TYPE_CHECKING, Any
 
 from telethon import TelegramClient
 
-from .config import get_settings
-from .db.pool import create_pool
-from .ingestion.backfill import BackfillRunner
-from .ingestion.listener import TelegramListener
-from .llm.client import LLMClient
-from .processing.engine import ProcessingEngine
+from replyradar.config import get_settings
+from replyradar.db.pool import create_pool
+from replyradar.ingestion.backfill import BackfillRunner
+from replyradar.ingestion.listener import TelegramListener
+from replyradar.llm.client import LLMClient
+from replyradar.processing.engine import ProcessingEngine
 
 if TYPE_CHECKING:
     import asyncpg

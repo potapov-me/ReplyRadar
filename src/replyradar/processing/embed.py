@@ -12,7 +12,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ..llm.client import LLMError, TransientLLMError
+from replyradar.llm.client import LLMError, TransientLLMError
 
 if TYPE_CHECKING:
     import asyncpg

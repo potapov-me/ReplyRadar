@@ -4,8 +4,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ...usecases import quarantine as quarantine_uc
-from ..deps import Pool  # noqa: TC001
+from replyradar.api.deps import Pool  # noqa: TC001
+from replyradar.usecases import quarantine as quarantine_uc
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

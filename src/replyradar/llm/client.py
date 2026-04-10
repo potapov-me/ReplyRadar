@@ -14,10 +14,10 @@ from typing import TYPE_CHECKING, Any
 import litellm
 from pydantic import ValidationError
 
-from .contracts.classify import ClassifyResponse
-from .contracts.extract import ExtractResponse
-from .prompts.classify import CLASSIFY_SYSTEM, CLASSIFY_USER
-from .prompts.extract import EXTRACT_SYSTEM, EXTRACT_USER
+from replyradar.llm.contracts.classify import ClassifyResponse
+from replyradar.llm.contracts.extract import ExtractResponse
+from replyradar.llm.prompts.classify import CLASSIFY_SYSTEM, CLASSIFY_USER
+from replyradar.llm.prompts.extract import EXTRACT_SYSTEM, EXTRACT_USER
 
 if TYPE_CHECKING:
     from ..config import EmbeddingConfig, LLMConfig

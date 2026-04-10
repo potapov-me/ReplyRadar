@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..db.repos import quarantine as quarantine_repo
+from replyradar.db.repos import quarantine as quarantine_repo
 
 if TYPE_CHECKING:
     import asyncpg

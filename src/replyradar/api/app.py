@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from ..bootstrap import cleanup_components, create_components
-from .routes import admin, chats, imports, status
+from replyradar.api.routes import admin, chats, imports, status
+from replyradar.bootstrap import cleanup_components, create_components
 
 
 @asynccontextmanager

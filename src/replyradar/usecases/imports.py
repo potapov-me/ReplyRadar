@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypedDict
 
-from ..db.repos import chats as chats_repo
-from ..db.repos import messages as messages_repo
+from replyradar.db.repos import chats as chats_repo
+from replyradar.db.repos import messages as messages_repo
 
 if TYPE_CHECKING:
     import asyncpg
