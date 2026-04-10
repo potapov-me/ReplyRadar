@@ -32,6 +32,7 @@ async def run_extract(  # pylint: disable=too-many-arguments
     text: str | None,
     sender_name: str | None,
     llm: LLMClient,
+    context: list[dict[str, str | None]] | None = None,
 ) -> None:
     """Запускает extract-стадию для одного сообщения.
 
@@ -42,7 +43,7 @@ async def run_extract(  # pylint: disable=too-many-arguments
         await _mark_success(pool, message_id=message_id)
         return
 
-    result = await llm.extract(text, sender_name)
+    result = await llm.extract(text, sender_name, context=context or [])
 
     for i, commitment in enumerate(result.commitments):
         await signals_repo.upsert_commitment(

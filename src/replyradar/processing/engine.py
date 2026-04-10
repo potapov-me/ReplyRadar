@@ -115,9 +115,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
 
             rows = await self._pool.fetch(
                 """
-                SELECT m.id, m.chat_id, m.text, m.sender_name,
-                       m.classified_at, m.is_signal,
-                       m.embedded_at, m.extracted_at
+                SELECT m.id
                 FROM messages m
                 WHERE m.classified_at IS NULL
                   AND NOT EXISTS (
@@ -167,7 +165,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                     break
 
                 try:
-                    await self._process_row(dict(row))
+                    await self._process_message(row["id"])
                 except Exception:  # pylint: disable=broad-exception-caught
                     logger.exception("backfill: необработанная ошибка msg_id=%d", row["id"])
 
@@ -190,11 +188,36 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
             return
         await self._process_row(dict(row))
 
+    async def _fetch_context(
+        self, chat_id: int, msg_id: int
+    ) -> list[dict[str, str | None]]:
+        """Возвращает N предыдущих сообщений чата для расширения контекста LLM."""
+        n = self._config.context_window_size
+        if n <= 0:
+            return []
+        rows = await self._pool.fetch(
+            """
+            SELECT sender_name, text
+            FROM messages
+            WHERE chat_id = $1
+              AND id < $2
+              AND text IS NOT NULL
+            ORDER BY id DESC
+            LIMIT $3
+            """,
+            chat_id,
+            msg_id,
+            n,
+        )
+        return [{"sender_name": r["sender_name"], "text": r["text"]} for r in reversed(rows)]
+
     async def _process_row(self, row: dict[str, Any]) -> None:
         msg_id: int = row["id"]
         chat_id: int = row["chat_id"]
         text: str | None = row["text"]
         sender_name: str | None = row["sender_name"]
+
+        context = await self._fetch_context(chat_id, msg_id)
 
         # ── Classify ─────────────────────────────────────────────────────────
         if row["classified_at"] is None:
@@ -207,6 +230,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                     text=text,
                     sender_name=sender_name,
                     llm=self._llm,
+                    context=context,
                 ),
                 mark_error=lambda err: mark_classify_error(
                     self._pool, message_id=msg_id, error=err
@@ -241,6 +265,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                     text=text,
                     sender_name=sender_name,
                     llm=self._llm,
+                    context=context,
                 ),
                 mark_error=lambda err: mark_extract_error(self._pool, message_id=msg_id, error=err),
             )

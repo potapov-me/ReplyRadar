@@ -31,6 +31,7 @@ async def run_classify(
     text: str | None,
     sender_name: str | None,
     llm: LLMClient,
+    context: list[dict[str, str | None]] | None = None,
 ) -> bool:
     """Запускает classify-стадию для одного сообщения.
 
@@ -42,7 +43,7 @@ async def run_classify(
         await _mark_success(pool, message_id=message_id, is_signal=False)
         return False
 
-    result = await llm.classify(text, sender_name)
+    result = await llm.classify(text, sender_name, context=context or [])
     await _mark_success(pool, message_id=message_id, is_signal=result.is_signal)
     logger.debug("classify msg_id=%d is_signal=%s", message_id, result.is_signal)
     return result.is_signal

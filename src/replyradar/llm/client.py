@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 import litellm
@@ -26,6 +27,24 @@ logger = logging.getLogger(__name__)
 
 # LiteLLM пишет много INFO-логов, снижаем до WARNING
 litellm.suppress_debug_info = True
+
+
+def _build_user_message(
+    template: str,
+    *,
+    sender_name: str | None,
+    text: str,
+    context: list[dict[str, str | None]] | None,
+) -> str:
+    """Формирует user-сообщение для LLM, добавляя историю беседы при наличии."""
+    target = template.format(sender_name=sender_name or "unknown", text=text or "")
+    if not context:
+        return target
+    history_lines = [
+        f"{m.get('sender_name') or 'unknown'}: {m.get('text') or ''}" for m in context
+    ]
+    history_block = "\n".join(history_lines)
+    return f"[Previous messages for context]\n{history_block}\n\n[Message to analyze]\n{target}"
 
 
 class LLMError(Exception):
@@ -83,31 +102,45 @@ class LLMClient:
         except Exception:  # pylint: disable=broad-exception-caught
             return False
 
-    async def classify(self, text: str, sender_name: str | None = None) -> ClassifyResponse:
+    async def classify(
+        self,
+        text: str,
+        sender_name: str | None = None,
+        context: list[dict[str, str | None]] | None = None,
+    ) -> ClassifyResponse:
         """Классифицирует сообщение: signal vs. noise.
 
         Raises:
             TransientLLMError: если LM Studio временно недоступен.
             PermanentLLMError: если ответ не прошёл Pydantic-контракт.
         """
-        user_msg = CLASSIFY_USER.format(
-            sender_name=sender_name or "unknown",
-            text=text or "",
+        user_msg = _build_user_message(
+            CLASSIFY_USER,
+            sender_name=sender_name,
+            text=text,
+            context=context,
         )
-        raw = await self._complete(CLASSIFY_SYSTEM, user_msg)
+        raw = await self._complete(CLASSIFY_SYSTEM, user_msg, stage="classify")
         return self._parse(ClassifyResponse, raw)
 
-    async def extract(self, text: str, sender_name: str | None = None) -> ExtractResponse:
+    async def extract(
+        self,
+        text: str,
+        sender_name: str | None = None,
+        context: list[dict[str, str | None]] | None = None,
+    ) -> ExtractResponse:
         """Извлекает commitments, pending_replies, communication_risks из сообщения.
 
         Raises:
             TransientLLMError / PermanentLLMError — аналогично classify().
         """
-        user_msg = EXTRACT_USER.format(
-            sender_name=sender_name or "unknown",
-            text=text or "",
+        user_msg = _build_user_message(
+            EXTRACT_USER,
+            sender_name=sender_name,
+            text=text,
+            context=context,
         )
-        raw = await self._complete(EXTRACT_SYSTEM, user_msg)
+        raw = await self._complete(EXTRACT_SYSTEM, user_msg, stage="extract")
         return self._parse(ExtractResponse, raw)
 
     async def embed(self, text: str) -> list[float]:

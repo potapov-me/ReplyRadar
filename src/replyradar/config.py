@@ -59,6 +59,7 @@ class ProcessingConfig(BaseModel):
     entity_extract_batch_size: int = 15
     max_retries_before_quarantine: int = 3
     backfill_concurrency: int = 1
+    context_window_size: int = 5  # кол-во предыдущих сообщений чата для контекста (0 = отключено)
 
 
 class LLMConfig(BaseModel):
