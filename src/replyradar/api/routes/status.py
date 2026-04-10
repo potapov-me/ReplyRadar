@@ -37,18 +37,47 @@ async def get_status(request: Request) -> dict[str, Any]:
     if pool is not None and db_status == "writable":
         try:
             pipeline["backlog_classify"] = (
-                await pool.fetchval("SELECT COUNT(*) FROM messages WHERE classified_at IS NULL")
+                await pool.fetchval(
+                    """
+                    SELECT COUNT(*)
+                    FROM messages m
+                    WHERE m.classified_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM processing_quarantine q
+                          WHERE q.message_id = m.id
+                            AND q.stage = 'classify'
+                            AND q.reviewed_at IS NULL
+                      )
+                    """
+                )
                 or 0
             )
             pipeline["backlog_extract"] = (
                 await pool.fetchval(
-                    "SELECT COUNT(*) FROM messages WHERE is_signal = true AND extracted_at IS NULL"
+                    """
+                    SELECT COUNT(*)
+                    FROM messages m
+                    WHERE m.is_signal = true
+                      AND m.extracted_at IS NULL
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM processing_quarantine q
+                          WHERE q.message_id = m.id
+                            AND q.stage = 'extract'
+                            AND q.reviewed_at IS NULL
+                      )
+                    """
                 )
                 or 0
             )
             pipeline["backlog_entity_extract"] = (
                 await pool.fetchval(
-                    "SELECT COUNT(*) FROM messages WHERE entities_extracted_at IS NULL"
+                    """
+                    SELECT COUNT(*)
+                    FROM messages
+                    WHERE entities_extracted_at IS NULL
+                    """
                 )
                 or 0
             )

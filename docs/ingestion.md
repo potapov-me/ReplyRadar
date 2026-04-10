@@ -168,7 +168,7 @@ processing:
 | Ситуация | Поведение |
 |----------|-----------|
 | БД недоступна при старте | Listener не запускается; `/status` → `db: error`; все ingestion-эндпоинты → 503 |
-| Telegram не настроен (`api_id=0`) | Listener не запускается; `POST /backfill` → 503 |
+| Telegram не настроен (`api_id=0`) | Listener не запускается; `POST /backfill` работает в DB-only режиме и будит обработку уже загруженных сообщений |
 | Сессия не авторизована | Listener переходит в `not_authorized`; `GET /status` → `telegram: not_authorized` |
 | LM Studio недоступен | Ingestion работает нормально; сообщения копятся с `classified_at IS NULL`; обработка продолжится при следующем запуске |
 | Import без Telegram-соединения | `POST /import/telegram-export` работает независимо от состояния listener'а |
@@ -215,7 +215,7 @@ monitor=false          # true — сразу выставить is_monitored=tru
 
 ### Что происходит после импорта
 
-Сообщения попадают в `messages` с `classified_at IS NULL` — Processing Engine подберёт их при следующем запуске (этап 3). Если Processing Engine уже работает — сообщения обработаются автоматически в фоне.
+Сообщения попадают в `messages` с `classified_at IS NULL` — Processing Engine подберёт их при следующем запуске (этап 3). Если Processing Engine уже работает — сообщения обработаются автоматически в фоне. Для немедленного старта можно вызвать `POST /backfill`: без Telegram listener он не тянет историю из Telegram, а просто будит DB backlog processing.
 
 Если хочется также включить realtime и backfill для этого чата — после импорта:
 ```

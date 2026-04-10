@@ -57,6 +57,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
         self._llm = llm
         self._config = config
         self._max_retries = config.max_retries_before_quarantine
+        self._backfill_wakeup = asyncio.Event()
 
         # (message_id, stage) -> retry_count в рамках текущей сессии
         self._retry_counts: dict[tuple[int, str], int] = {}
@@ -76,11 +77,17 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
 
     async def stop(self) -> None:
         self._running = False
+        self._backfill_wakeup.set()
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
         logger.info("ProcessingEngine stopped")
+
+    def wake_backfill(self) -> None:
+        """Форсирует ближайшую проверку backlog без ожидания poll interval."""
+        logger.info("ProcessingEngine wake_backfill requested")
+        self._backfill_wakeup.set()
 
     # ── loops ─────────────────────────────────────────────────────────────────
 
@@ -113,8 +120,29 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                        m.embedded_at, m.extracted_at
                 FROM messages m
                 WHERE m.classified_at IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM processing_quarantine q
+                      WHERE q.message_id = m.id
+                        AND q.stage = 'classify'
+                        AND q.reviewed_at IS NULL
+                  )
                    OR m.embedded_at IS NULL
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM processing_quarantine q
+                      WHERE q.message_id = m.id
+                        AND q.stage = 'embed'
+                        AND q.reviewed_at IS NULL
+                  )
                    OR (m.is_signal = true AND m.extracted_at IS NULL)
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM processing_quarantine q
+                      WHERE q.message_id = m.id
+                        AND q.stage = 'extract'
+                        AND q.reviewed_at IS NULL
+                  )
                 ORDER BY m.timestamp ASC
                 LIMIT $1
                 """,
@@ -122,8 +150,17 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
             )
 
             if not rows:
-                await asyncio.sleep(_BACKFILL_POLL_INTERVAL)
+                self._backfill_wakeup.clear()
+                try:
+                    await asyncio.wait_for(
+                        self._backfill_wakeup.wait(),
+                        timeout=_BACKFILL_POLL_INTERVAL,
+                    )
+                except TimeoutError:
+                    pass
                 continue
+
+            logger.info("ProcessingEngine picked backlog batch size=%d", len(rows))
 
             for row in rows:
                 if not self._queue.empty():
