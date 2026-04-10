@@ -97,11 +97,10 @@ class TelegramListener:
     async def resolve_chat(self, telegram_id: int) -> str | None:
         """Проверяет существование чата и возвращает его название.
 
-        Если listener не подключён — возвращает None (деградированный режим, ID без проверки).
-        Если подключён, но entity не найдена — поднимает TelegramResolveError.
+        Требует status == "connected". Если entity не найдена — поднимает TelegramResolveError.
         """
         if self.state.status != "connected":
-            return None
+            raise TelegramResolveError("listener не подключён")
         try:
             entity = await self._client.get_entity(telegram_id)
             return getattr(entity, "title", None) or getattr(entity, "username", None)

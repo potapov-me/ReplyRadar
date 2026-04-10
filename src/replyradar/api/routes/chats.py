@@ -18,23 +18,20 @@ async def monitor_chat(telegram_id: int, request: Request, pool: Pool) -> dict[s
 
     Idempotent: повторный вызов не создаёт дубликатов.
     """
-    # Проверяем, что чат существует в Telegram (если listener подключён)
     listener = getattr(request.app.state, "listener", None)
-    title: str | None = None
-    if listener is not None:
-        try:
-            title = await listener.resolve_chat(telegram_id)
-        except TelegramResolveError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Telegram ID {telegram_id} не найден или недоступен: {exc}",
-            ) from exc
+    if listener is None or listener.state.status != "connected":
+        raise HTTPException(status_code=503, detail="Telegram listener не подключён")
+
+    try:
+        title = await listener.resolve_chat(telegram_id)
+    except TelegramResolveError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Telegram ID {telegram_id} не найден или недоступен: {exc}",
+        ) from exc
 
     chat = await chats_uc.monitor_chat(pool, telegram_id, title)
-
-    # Регистрируем в realtime-фильтре без перезапуска listener'а
-    if listener is not None:
-        listener.add_monitored_chat(telegram_id)
+    listener.add_monitored_chat(telegram_id)
 
     return chat
 
