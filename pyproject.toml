@@ -21,6 +21,7 @@ dependencies = [
     "telethon>=1.36.0",
     "python-multipart>=0.0.12",
     "litellm>=1.55.0",
+    "python-json-logger>=4.1.0",
 ]
 
 [project.optional-dependencies]

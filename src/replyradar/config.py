@@ -88,6 +88,11 @@ class ImportConfig(BaseModel):
     max_file_size_mb: int = 200  # максимальный размер result.json для /import/telegram-export
 
 
+class LogConfig(BaseModel):
+    level: str = "INFO"       # DEBUG | INFO | WARNING | ERROR
+    format: str = "text"      # text | json  (json — для Docker/продакшн)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -105,6 +110,7 @@ class Settings(BaseSettings):
     database: DatabaseConfig = DatabaseConfig()
     telegram: TelegramConfig = TelegramConfig()
     tg_import: ImportConfig = ImportConfig()
+    log: LogConfig = LogConfig()
 
     @classmethod
     def settings_customise_sources(  # pylint: disable=too-many-arguments,too-many-positional-arguments

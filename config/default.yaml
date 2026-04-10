@@ -37,7 +37,7 @@ llm:
 # Embeddings через LM Studio
 embedding:
   provider: lmstudio
-  model: text-embedding-nomic-embed-text-v1.5
+  model: text-embedding-nomic-embed-text-v1.5-embedding
   base_url: http://host.docker.internal:1234/v1
 
 # Подключение к Postgres — переопределяется через DATABASE__URL в .env
@@ -51,6 +51,11 @@ telegram:
   api_hash: ""        # str, обязателен для подключения
   session_name: replyradar            # имя файла сессии (без .session)
   session_dir: .      # директория для хранения .session файла
+
+# Логирование (ADR-0019) — переопределяется через LOG__LEVEL, LOG__FORMAT в .env
+log:
+  level: INFO    # DEBUG | INFO | WARNING | ERROR
+  format: text   # text | json  (json — для Docker / log-aggregation)
 
 # Ручной импорт истории из Telegram Desktop Export (ADR-0017)
 # Переопределяется через TG_IMPORT__MAX_FILE_SIZE_MB в .env

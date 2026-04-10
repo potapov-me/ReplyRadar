@@ -35,6 +35,9 @@ async def _cmd_auth() -> None:
 
 
 def main() -> None:
+    from .logging import configure_logging  # noqa: PLC0415
+    configure_logging()
+
     parser = argparse.ArgumentParser(
         prog="replyradar",
         description="ReplyRadar — навигация по Telegram-перепискам",
