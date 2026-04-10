@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ..bootstrap import cleanup_components, create_components
-from .routes import chats, status
+from .routes import chats, imports, status
 
 
 @asynccontextmanager
@@ -26,3 +26,4 @@ app = FastAPI(title="ReplyRadar", lifespan=lifespan)
 
 app.include_router(status.router)
 app.include_router(chats.router)
+app.include_router(imports.router)

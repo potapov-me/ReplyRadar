@@ -1,19 +1,20 @@
-# Code Review: этап 2
+# Code Review: этап 2.5
 
 ## Findings
 
-Актуальных замечаний по реализации этапа 2 не найдено.
+Актуальных кодовых замечаний по реализации этапа 2.5 не найдено.
 
 ## Assumptions
 
-- ревью выполнено по требованиям этапа 2 из `docs/plan.md`
-- полноценный e2e прогон с живыми Telegram и Postgres в этой сессии не выполнялся
+- ревью выполнено по требованиям этапа 2.5 из `docs/plan.md`
+- полноценный e2e импорт в живую БД в этой сессии не выполнялся
 
 ## Checks
 
 - `uv run pytest -q .` проходит
 - `python3 -m compileall src tests` проходит
+- импорт `replyradar.api.app` проходит, роут `/import/telegram-export` зарегистрирован
 
 ## Residual Risks
 
-- end-to-end артефакт этапа 2 всё ещё стоит подтвердить на живых Telegram и Postgres: `POST /chats/{id}/monitor`, затем `POST /backfill`, затем проверка фактических строк в `messages`
+- стоит отдельно подтвердить end-to-end артефакт на реальной БД: загрузка одиночного `result.json`, полного account export, повторная загрузка тех же файлов без дублей, и корректное поведение `monitor=false/true`

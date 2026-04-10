@@ -51,3 +51,8 @@ telegram:
   api_hash: ""        # str, обязателен для подключения
   session_name: replyradar            # имя файла сессии (без .session)
   session_dir: .      # директория для хранения .session файла
+
+# Ручной импорт истории из Telegram Desktop Export (ADR-0017)
+# Переопределяется через TG_IMPORT__MAX_FILE_SIZE_MB в .env
+tg_import:
+  max_file_size_mb: 200  # максимальный размер result.json в МБ

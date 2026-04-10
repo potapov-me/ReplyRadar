@@ -234,7 +234,7 @@ POST /backfill {"telegram_id": ...} # опционально: догрузить
 | `public_supergroup`, `private_supergroup` | `-100` + ID |
 | `public_channel`, `private_channel` | `-100` + ID |
 
-Если нормализация дала неверный результат — передать правильный ID явно через параметр `telegram_id_override` (query).
+Если нормализация дала неверный результат — отредактируйте запись чата в БД вручную или запустите `POST /chats/{id}/monitor` с корректным ID после импорта.
 
 ### Формат `result.json` — что поддерживается
 
