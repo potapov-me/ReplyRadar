@@ -13,6 +13,8 @@ from .config import get_settings
 from .db.pool import create_pool
 from .ingestion.backfill import BackfillRunner
 from .ingestion.listener import TelegramListener
+from .llm.client import LLMClient
+from .processing.engine import ProcessingEngine
 
 if TYPE_CHECKING:
     import asyncpg
@@ -39,6 +41,15 @@ async def create_components() -> dict[str, Any]:
 
     # ── Очередь для Processing Engine ────────────────────────────────────────
     queue: asyncio.Queue[int] = asyncio.Queue()
+
+    # ── LLM client ────────────────────────────────────────────────────────────
+    llm = LLMClient(settings.llm, settings.embedding)
+
+    # ── Processing Engine ─────────────────────────────────────────────────────
+    engine: ProcessingEngine | None = None
+    if pool is not None:
+        engine = ProcessingEngine(pool, queue, llm, settings.processing)
+        await engine.start()
 
     # ── Telegram client ───────────────────────────────────────────────────────
     tg = settings.telegram
@@ -70,11 +81,17 @@ async def create_components() -> dict[str, Any]:
         "client": client,
         "listener": listener,
         "backfill_runner": backfill_runner,
+        "llm": llm,
+        "engine": engine,
     }
 
 
 async def cleanup_components(components: dict[str, Any]) -> None:
     """Корректно завершает все компоненты при остановке."""
+    engine: ProcessingEngine | None = components.get("engine")
+    if engine is not None:
+        await engine.stop()
+
     backfill_runner: BackfillRunner | None = components.get("backfill_runner")
     if backfill_runner is not None:
         await backfill_runner.stop()

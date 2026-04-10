@@ -74,10 +74,17 @@ async def get_status(request: Request) -> dict[str, Any]:
         telegram_status = "not_configured"
         telegram_detail = None
 
+    # ── состояние LM Studio ───────────────────────────────────────────────────
+    llm = getattr(request.app.state, "llm", None)
+    if llm is not None:
+        lm_studio_status = "reachable" if await llm.check_health() else "unreachable"
+    else:
+        lm_studio_status = "not_configured"
+
     response: dict[str, Any] = {
         "telegram": telegram_status,
         "db": db_status,
-        "lm_studio": "not_configured",
+        "lm_studio": lm_studio_status,
         "scheduler": "not_started",
         "pipeline": pipeline,
     }

@@ -20,6 +20,7 @@ dependencies = [
     "pyyaml>=6.0",
     "telethon>=1.36.0",
     "python-multipart>=0.0.12",
+    "litellm>=1.55.0",
 ]
 
 [project.optional-dependencies]
