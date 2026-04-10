@@ -1,0 +1,45 @@
+# Модель активации сущностей (ADR-0009)
+# Когда candidate → active автоматически
+activation:
+  min_mentions: 3    # минимум упоминаний в сообщениях
+  min_chats: 2       # из как минимум N разных чатов
+
+# Система уверенности фактов/связей (ADR-0007)
+confidence:
+  display_threshold: 0.75    # факт показывается без оговорок
+  hedged_threshold: 0.40     # факт показывается с пометкой "вероятно"
+  source_weights:
+    self: 1.0        # человек говорит о себе сам
+    other: 0.7       # другой человек говорит о нём
+    inferred: 0.5    # выведено системой косвенно
+  half_life_days: 365            # период полураспада уверенности (затухание по времени)
+  max_corroboration_boost: 0.40  # максимальный бонус от независимых подтверждений
+  corroboration_step: 0.10       # прирост уверенности за каждое подтверждение
+  contradiction_penalty_factor: 0.5  # штраф за каждое противоречие
+
+# Entity resolution (ADR-0006)
+entity_resolution:
+  similarity_threshold: 0.85  # порог cosine similarity для merge-кандидатов
+
+# Processing pipeline (ADR-0011)
+processing:
+  backfill_batch_size: 20           # сообщений в одном батче backfill
+  entity_extract_batch_size: 15     # сообщений в одном LLM-вызове EntityExtract
+  max_retries_before_quarantine: 3  # попыток до перемещения в quarantine
+  backfill_concurrency: 1           # параллельных воркеров backfill
+
+# LLM через LM Studio (ADR-0004)
+llm:
+  base_url: http://host.docker.internal:1234/v1
+  model: local-model
+  api_key: lm-studio
+
+# Embeddings через LM Studio
+embedding:
+  provider: lmstudio
+  model: text-embedding-nomic-embed-text-v1.5
+  base_url: http://host.docker.internal:1234/v1
+
+# Подключение к Postgres — переопределяется через DATABASE__URL в .env
+database:
+  url: postgresql://postgres:postgres@localhost:5432/replyradar
