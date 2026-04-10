@@ -123,6 +123,7 @@ class LLMClient:
         text: str,
         sender_name: str | None = None,
         context: list[dict[str, str | None]] | None = None,
+        msg_id: int | None = None,
     ) -> ClassifyResponse:
         """Классифицирует сообщение: signal vs. noise.
 
@@ -136,7 +137,7 @@ class LLMClient:
             text=text,
             context=context,
         )
-        raw = await self._complete(CLASSIFY_SYSTEM, user_msg, stage="classify")
+        raw = await self._complete(CLASSIFY_SYSTEM, user_msg, stage="classify", msg_id=msg_id)
         return self._parse(ClassifyResponse, raw)
 
     async def extract(
@@ -144,6 +145,7 @@ class LLMClient:
         text: str,
         sender_name: str | None = None,
         context: list[dict[str, str | None]] | None = None,
+        msg_id: int | None = None,
     ) -> ExtractResponse:
         """Извлекает commitments, pending_replies, communication_risks из сообщения.
 
@@ -156,10 +158,10 @@ class LLMClient:
             text=text,
             context=context,
         )
-        raw = await self._complete(EXTRACT_SYSTEM, user_msg, stage="extract")
+        raw = await self._complete(EXTRACT_SYSTEM, user_msg, stage="extract", msg_id=msg_id)
         return self._parse(ExtractResponse, raw)
 
-    async def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str, msg_id: int | None = None) -> list[float]:
         """Возвращает вектор эмбеддинга для текста.
 
         Raises:
@@ -175,27 +177,28 @@ class LLMClient:
             )
             vector: list[float] = list(response.data[0]["embedding"])
             logger.info(
-                "llm.embed ok duration=%.3fs dims=%d model=%s",
+                "llm.embed ok msg_id=%s duration=%.3fs dims=%d model=%s",
+                msg_id,
                 time.monotonic() - t0,
                 len(vector),
                 self._emb.model,
             )
             return vector
         except _TRANSIENT_EXCEPTIONS as exc:
-            logger.critical("llm unavailable stage=embed duration=%.3fs: %s", time.monotonic() - t0, exc)
+            logger.critical("llm unavailable stage=embed msg_id=%s duration=%.3fs: %s", msg_id, time.monotonic() - t0, exc)
             raise LLMUnavailableError(f"embedding unavailable: {exc}") from exc
         except Exception as exc:
             if any(msg in str(exc) for msg in _TRANSIENT_LM_STUDIO_MESSAGES):
                 logger.critical(
-                    "llm unavailable stage=embed duration=%.3fs: %s", time.monotonic() - t0, exc
+                    "llm unavailable stage=embed msg_id=%s duration=%.3fs: %s", msg_id, time.monotonic() - t0, exc
                 )
                 raise LLMUnavailableError(f"embedding unavailable: {exc}") from exc
-            logger.warning("llm.embed permanent duration=%.3fs: %s", time.monotonic() - t0, exc)
+            logger.warning("llm.embed permanent msg_id=%s duration=%.3fs: %s", msg_id, time.monotonic() - t0, exc)
             raise PermanentLLMError(f"embedding permanent: {exc}") from exc
 
     # ── internal ──────────────────────────────────────────────────────────────
 
-    async def _complete(self, system: str, user: str, *, stage: str = "complete") -> str:
+    async def _complete(self, system: str, user: str, *, stage: str = "complete", msg_id: int | None = None) -> str:
         """Вызывает LLM и возвращает текст ответа."""
         t0 = time.monotonic()
         try:
@@ -213,32 +216,34 @@ class LLMClient:
             usage = getattr(resp, "usage", None)
             if usage:
                 logger.info(
-                    "llm.%s ok duration=%.3fs tokens_in=%d tokens_out=%d model=%s",
+                    "llm.%s ok msg_id=%s duration=%.3fs tokens_in=%d tokens_out=%d model=%s",
                     stage,
+                    msg_id,
                     duration,
                     usage.prompt_tokens,
                     usage.completion_tokens,
                     self._llm.model,
                 )
             else:
-                logger.info("llm.%s ok duration=%.3fs model=%s", stage, duration, self._llm.model)
+                logger.info("llm.%s ok msg_id=%s duration=%.3fs model=%s", stage, msg_id, duration, self._llm.model)
             return resp.choices[0].message.content or ""
         except _TRANSIENT_EXCEPTIONS as exc:
             logger.critical(
-                "llm unavailable stage=%s duration=%.3fs: %s", stage, time.monotonic() - t0, exc
+                "llm unavailable stage=%s msg_id=%s duration=%.3fs: %s", stage, msg_id, time.monotonic() - t0, exc
             )
             raise LLMUnavailableError(f"completion unavailable: {exc}") from exc
         except Exception as exc:
             if any(msg in str(exc) for msg in _TRANSIENT_LM_STUDIO_MESSAGES):
                 logger.critical(
-                    "llm unavailable stage=%s duration=%.3fs: %s",
+                    "llm unavailable stage=%s msg_id=%s duration=%.3fs: %s",
                     stage,
+                    msg_id,
                     time.monotonic() - t0,
                     exc,
                 )
                 raise LLMUnavailableError(f"completion unavailable: {exc}") from exc
             logger.warning(
-                "llm.%s permanent duration=%.3fs: %s", stage, time.monotonic() - t0, exc
+                "llm.%s permanent msg_id=%s duration=%.3fs: %s", stage, msg_id, time.monotonic() - t0, exc
             )
             raise PermanentLLMError(f"completion permanent: {exc}") from exc
 

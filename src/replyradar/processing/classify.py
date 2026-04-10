@@ -43,7 +43,7 @@ async def run_classify(
         await _mark_success(pool, message_id=message_id, is_signal=False)
         return False
 
-    result = await llm.classify(text, sender_name, context=context or [])
+    result = await llm.classify(text, sender_name, context=context or [], msg_id=message_id)
     await _mark_success(pool, message_id=message_id, is_signal=result.is_signal)
     logger.debug("classify msg_id=%d is_signal=%s", message_id, result.is_signal)
     return result.is_signal

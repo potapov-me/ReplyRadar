@@ -38,7 +38,7 @@ async def run_embed(
         await _mark_success(pool, message_id=message_id, vector=None)
         return
 
-    vector = await llm.embed(text)
+    vector = await llm.embed(text, msg_id=message_id)
     await _mark_success(pool, message_id=message_id, vector=vector)
     logger.debug("embed msg_id=%d dims=%d", message_id, len(vector))
 

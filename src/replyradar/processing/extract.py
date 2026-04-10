@@ -43,7 +43,7 @@ async def run_extract(  # pylint: disable=too-many-arguments
         await _mark_success(pool, message_id=message_id)
         return
 
-    result = await llm.extract(text, sender_name, context=context or [])
+    result = await llm.extract(text, sender_name, context=context or [], msg_id=message_id)
 
     for i, commitment in enumerate(result.commitments):
         await signals_repo.upsert_commitment(
