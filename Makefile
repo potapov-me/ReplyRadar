@@ -25,6 +25,9 @@ install: ## Установить зависимости (включая dev)
 dev: ## Запустить API с hot-reload
 	uv run uvicorn src.replyradar.main:app --reload
 
+auth: ## Авторизовать Telegram-аккаунт (создать .session файл)
+	uv run python -m replyradar auth
+
 digest: ## Запустить CLI дайджест
 	uv run python -m replyradar digest
 

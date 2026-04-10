@@ -1,11 +1,14 @@
 from typing import Annotated
 
 import asyncpg
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 
 
 def _get_pool(request: Request) -> asyncpg.Pool:
-    return request.app.state.pool  # type: ignore[no-any-return]
+    pool = request.app.state.pool
+    if pool is None:
+        raise HTTPException(status_code=503, detail="База данных недоступна")
+    return pool
 
 
 Pool = Annotated[asyncpg.Pool, Depends(_get_pool)]

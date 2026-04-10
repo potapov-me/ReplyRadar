@@ -77,6 +77,13 @@ class DatabaseConfig(BaseModel):
     url: str = "postgresql://postgres:postgres@localhost:5432/replyradar"
 
 
+class TelegramConfig(BaseModel):
+    api_id: int = 0
+    api_hash: str = ""
+    session_name: str = "replyradar"
+    session_dir: str = "."  # путь относительно CWD
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",
@@ -92,6 +99,7 @@ class Settings(BaseSettings):
     llm: LLMConfig = LLMConfig()
     embedding: EmbeddingConfig = EmbeddingConfig()
     database: DatabaseConfig = DatabaseConfig()
+    telegram: TelegramConfig = TelegramConfig()
 
     @classmethod
     def settings_customise_sources(

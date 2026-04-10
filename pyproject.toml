@@ -18,6 +18,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "pydantic-settings>=2.3.0",
     "pyyaml>=6.0",
+    "telethon>=1.36.0",
 ]
 
 [project.optional-dependencies]
@@ -29,6 +30,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.25.0",
     "import-linter>=2.1.0",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.ruff]
@@ -47,6 +49,10 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 module = ["replyradar.knowledge.*", "replyradar.db.repos.*"]
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["asyncpg.*", "telethon.*"]
+ignore_missing_imports = true
 
 [tool.bandit]
 exclude_dirs = [".venv", "tests"]

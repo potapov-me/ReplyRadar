@@ -43,3 +43,11 @@ embedding:
 # Подключение к Postgres — переопределяется через DATABASE__URL в .env
 database:
   url: postgresql://postgres:postgres@localhost:5432/replyradar
+
+# Telegram (Telethon MTProto) — получить api_id/api_hash на https://my.telegram.org
+# Переопределяется через TELEGRAM__API_ID, TELEGRAM__API_HASH в .env
+telegram:
+  api_id: 0           # int, обязателен для подключения
+  api_hash: ""        # str, обязателен для подключения
+  session_name: replyradar            # имя файла сессии (без .session)
+  session_dir: .      # директория для хранения .session файла

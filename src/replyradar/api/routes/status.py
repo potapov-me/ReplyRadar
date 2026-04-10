@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/status")
-async def get_status(request: Request) -> dict:
+async def get_status(request: Request) -> dict[str, Any]:
     pool: asyncpg.Pool | None = request.app.state.pool
     db_error: str | None = request.app.state.db_error
 
@@ -22,11 +22,11 @@ async def get_status(request: Request) -> dict:
         try:
             await pool.fetchval("SELECT 1")
             db_status = "writable"
-        except Exception:
+        except Exception:  # noqa: BLE001
             db_status = "error"
 
     # ── backlog из БД (нули при недоступной базе) ─────────────────────────────
-    pipeline: dict = {
+    pipeline: dict[str, Any] = {
         "realtime_queue_depth": 0,
         "backlog_classify": 0,
         "backlog_extract": 0,
@@ -58,17 +58,31 @@ async def get_status(request: Request) -> dict:
                 )
                 or 0
             )
-        except Exception:
+            queue = getattr(request.app.state, "queue", None)
+            if queue is not None:
+                pipeline["realtime_queue_depth"] = queue.qsize()
+        except Exception:  # noqa: BLE001
             # Таблицы ещё не созданы — нормально до первого alembic upgrade head
             pass
 
-    response: dict = {
-        "telegram": "not_configured",
+    # ── состояние Telegram ────────────────────────────────────────────────────
+    listener = getattr(request.app.state, "listener", None)
+    if listener is not None:
+        telegram_status: str = listener.state.status
+        telegram_detail: str | None = listener.state.error
+    else:
+        telegram_status = "not_configured"
+        telegram_detail = None
+
+    response: dict[str, Any] = {
+        "telegram": telegram_status,
         "db": db_status,
         "lm_studio": "not_configured",
         "scheduler": "not_started",
         "pipeline": pipeline,
     }
+    if telegram_detail:
+        response["telegram_detail"] = telegram_detail
     if db_error:
         response["db_detail"] = db_error
     return response

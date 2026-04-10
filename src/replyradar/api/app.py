@@ -4,14 +4,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from ..bootstrap import cleanup_components, create_components
-from .routes import status
+from .routes import chats, status
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
     components = await create_components()
-    app.state.pool = components["pool"]  # asyncpg.Pool | None
-    app.state.db_error = components["db_error"]  # str | None
+    application.state.pool = components["pool"]
+    application.state.db_error = components["db_error"]
+    application.state.queue = components["queue"]
+    application.state.client = components["client"]
+    application.state.listener = components["listener"]
+    application.state.backfill_runner = components["backfill_runner"]
     try:
         yield
     finally:
@@ -21,3 +25,4 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 app = FastAPI(title="ReplyRadar", lifespan=lifespan)
 
 app.include_router(status.router)
+app.include_router(chats.router)
