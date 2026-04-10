@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 
@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.get("/status")
-async def get_status(request: Request) -> dict:
+async def get_status(request: Request) -> dict[str, Any]:
     pool: asyncpg.Pool | None = request.app.state.pool
     db_error: str | None = request.app.state.db_error
 
@@ -22,11 +22,11 @@ async def get_status(request: Request) -> dict:
         try:
             await pool.fetchval("SELECT 1")
             db_status = "writable"
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             db_status = "error"
 
     # ── backlog из БД (нули при недоступной базе) ─────────────────────────────
-    pipeline: dict = {
+    pipeline: dict[str, Any] = {
         "realtime_queue_depth": 0,
         "backlog_classify": 0,
         "backlog_extract": 0,
@@ -58,11 +58,11 @@ async def get_status(request: Request) -> dict:
                 )
                 or 0
             )
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             # Таблицы ещё не созданы — нормально до первого alembic upgrade head
             pass
 
-    response: dict = {
+    response: dict[str, Any] = {
         "telegram": "not_configured",
         "db": db_status,
         "lm_studio": "not_configured",

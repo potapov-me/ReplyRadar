@@ -14,7 +14,7 @@ class _YamlSource(PydanticBaseSettingsSource):
         super().__init__(settings_cls)
         self._data: dict[str, Any] = {}
         if yaml_path.exists():
-            with yaml_path.open() as f:
+            with yaml_path.open(encoding="utf-8") as f:
                 self._data = yaml.safe_load(f) or {}
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     database: DatabaseConfig = DatabaseConfig()
 
     @classmethod
-    def settings_customise_sources(
+    def settings_customise_sources(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         cls,
         settings_cls: type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
