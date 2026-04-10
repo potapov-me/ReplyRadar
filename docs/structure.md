@@ -23,7 +23,8 @@ replyradar/
 │       │
 │       ├── ingestion/
 │       │   ├── listener.py        # Telethon realtime listener → asyncio.Queue
-│       │   └── backfill.py        # итератор iter_messages для загрузки истории
+│       │   ├── backfill.py        # итератор iter_messages для загрузки истории
+│       │   └── tg_export_parser.py  # парсер result.json из Telegram Desktop
 │       │
 │       ├── processing/
 │       │   ├── engine.py          # оркестратор: realtime queue + backfill loop,
@@ -43,6 +44,7 @@ replyradar/
 │       ├── usecases/              # orchestration: решает что, когда и зачем — не как
 │       │   ├── today.py           # агрегирует pending + commitments + risks
 │       │   ├── backfill.py        # запускает ingestion + processing
+│       │   ├── imports.py         # импорт из Telegram Desktop export
 │       │   ├── summarize.py       # решает что суммаризировать → вызывает summarizer/
 │       │   ├── people.py          # GetPersonProfile, FindConnections
 │       │   └── digest.py          # решает что включать в дайджест → вызывает digest/
@@ -75,6 +77,7 @@ replyradar/
 │           ├── deps.py            # зависимости: db connection, pagination params
 │           └── routes/
 │               ├── chats.py       # /chats, /backfill, /today, /pending, /commitments, /risks
+│               ├── imports.py     # /import/telegram-export
 │               ├── people.py      # /people — reads: db/repos напрямую; mutations: usecases/
 │               ├── orgs.py        # /orgs
 │               └── admin.py       # /admin/quarantine, /admin/metrics, /admin/entities/{id}/audit

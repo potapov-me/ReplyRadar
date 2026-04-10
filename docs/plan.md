@@ -30,6 +30,25 @@
 
 ---
 
+## Этап 2.5. Import
+
+**Зачем:** backfill через `iter_messages` работает только при активном Telegram-соединении и упирается в FloodWait на больших чатах. Ручной импорт позволяет загрузить историю из стандартного экспорта Telegram Desktop без live-соединения.
+
+**Что строится:**
+- `ingestion/tg_export_parser.py` — парсер `result.json` формата Telegram Desktop: нормализация `from_id` (`"user123456789"` → bigint), сборка plain text из форматированных блоков (text может быть строкой или массивом), автоопределение canonical `telegram_id` для supergroup/channel (добавляет префикс `-100` к положительным ID), фильтрация service-сообщений
+- `usecases/imports.py` — use-case: `get_or_create_chat` по данным из экспорта, батчевая вставка сообщений через `INSERT ... ON CONFLICT (chat_id, telegram_msg_id) DO NOTHING`, возвращает `ImportResult(telegram_id, title, parsed, imported, skipped)`
+- `api/routes/imports.py` — `POST /import/telegram-export` (multipart, поле `file: UploadFile`; query-параметр `monitor: bool = false`)
+- Миграция не нужна — использует существующие таблицы `chats` и `messages`
+
+**Ограничения этапа:**
+- Максимальный размер файла — 200 МБ (лимит в FastAPI `UploadFile`, настраивается в конфиге)
+- Файлы медиа из экспорта игнорируются — только текстовые сообщения
+- Если `monitor=false` (по умолчанию), чат создаётся с `is_monitored=false`; чтобы запустить realtime и backfill — вызвать `POST /chats/{id}/monitor` отдельно
+
+**Артефакт:** `POST /import/telegram-export` с `result.json` из Telegram Desktop импортирует сообщения в `messages`. Повторная загрузка того же файла не создаёт дублей. Работает без активного Telegram-соединения — listener не требуется.
+
+---
+
 ## Этап 3. Processing Core
 
 **Что строится:**

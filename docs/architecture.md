@@ -16,11 +16,13 @@
 flowchart TD
     TG[Telegram]
     LIS[Telethon Listener]
+    EXP[result.json\nTelegram Desktop Export]
     MSG[(messages\nraw · immutable)]
 
     TG -->|MTProto| LIS
     LIS -->|realtime trigger| MSG
     LIS -->|backfill trigger| MSG
+    EXP -->|POST /import/telegram-export| MSG
 
     MSG --> PE[Processing Engine\nодин и тот же код]
 
@@ -171,6 +173,7 @@ POST /chats/{id}/monitor
 POST /backfill
 GET  /backfill/status
 POST /chats/{id}/summarize
+POST /import/telegram-export
 
 # Health
 GET  /status                         # component-level: db, telegram, lm_studio, scheduler, backlog
