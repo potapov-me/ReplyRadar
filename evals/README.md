@@ -2,6 +2,8 @@
 
 Офлайн-оценка качества LLM-стадий на фиксированных примерах.
 
+Статус на текущий момент: в CLI реализованы только evals для `classify` и `extract`. Упоминания `entity_extract` ниже относятся к следующему этапу и пока не соответствуют реальной команде.
+
 ## Принцип
 
 Evals — это регрессионная дисциплина, не разовая проверка. Любое изменение промпта, модели или порогов в `config/` требует прогона evals и сравнения с предыдущим baseline. Если метрики упали — изменение не мерджится.
@@ -22,7 +24,7 @@ evals/
     ├── extract/
     │   ├── examples.jsonl
     │   └── baseline.json
-    └── entity_extract/        # добавляется в Этапе 5
+    └── entity_extract/        # planned: пока не используется текущим CLI
         ├── examples.jsonl
         └── baseline.json
 ```
@@ -45,11 +47,11 @@ evals/
 
 ```bash
 # Прогнать evals для стадии
-python -m replyradar eval classify
-python -m replyradar eval extract
+uv run python -m replyradar eval classify
+uv run python -m replyradar eval extract
 
 # Зафиксировать текущий результат как новый baseline
-python -m replyradar eval classify --update-baseline
+uv run python -m replyradar eval classify --update-baseline
 ```
 
 Если метрика упала ниже baseline — команда завершается с ненулевым кодом.
@@ -227,3 +229,7 @@ Recall важнее Precision: пропущенный commitment хуже лиш
 - очевидные случаи для "накрутки" метрик
 
 Минимальный полезный датасет: **30–50 примеров на стадию**. При старте достаточно 15–20 чтобы зафиксировать первый baseline.
+
+## Planned stage
+
+`entity_extract` и связанные evals появятся после добавления knowledge-graph pipeline в runtime. До этого секции про entity extraction следует читать как заготовку под будущий этап.

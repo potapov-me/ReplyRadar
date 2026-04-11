@@ -1,107 +1,110 @@
 # Observability
 
-Как читать состояние системы через `/status` и `/admin/metrics`.
+Сейчас основная операционная поверхность проекта состоит из `GET /status` и quarantine-роутов. Эндпоинта `/admin/metrics` в текущем runtime нет.
 
----
+## `GET /status`
 
-## GET /status — компонентный health check
+Пример ответа:
 
 ```json
 {
   "telegram": "connected",
   "db": "writable",
   "lm_studio": "reachable",
-  "scheduler": "alive",
+  "scheduler": "not_started",
   "pipeline": {
     "realtime_queue_depth": 0,
     "backlog_classify": 12,
     "backlog_extract": 5,
-    "backlog_embed": 5,
-    "backlog_entity_extract": 34,
+    "backlog_entity_extract": 0,
     "quarantine_size": 2
   }
 }
 ```
 
-### Статусы компонентов
+### Поля верхнего уровня
 
-| Компонент | Значения | Что означает проблема |
-|-----------|----------|-----------------------|
-| `telegram` | `connected` / `disconnected` / `reconnecting` | сообщения не поступают, история может теряться |
-| `db` | `writable` / `readonly` / `unreachable` | вся система деградирует, ingestion в best-effort |
-| `lm_studio` | `reachable` / `unreachable` | обработка приостановлена, backlog растёт |
-| `scheduler` | `alive` / `dead` | summaries не обновляются по расписанию |
+| Поле | Возможные значения | Что значит |
+|---|---|---|
+| `telegram` | `connected`, `not_authorized`, `error`, `disconnected`, `not_configured` | состояние Telethon listener |
+| `db` | `writable`, `error` | доступность Postgres для чтения/записи |
+| `lm_studio` | `reachable`, `unreachable`, `not_configured` | доступность LLM endpoint |
+| `scheduler` | сейчас всегда `not_started` | scheduler ещё не реализован |
 
-### Пороги для pipeline
+### Поля `pipeline`
 
-| Метрика | Норма | Внимание | Действие |
-|---------|-------|----------|----------|
-| `realtime_queue_depth` | 0–5 | > 20 | processing не успевает за realtime |
-| `backlog_*` (любая стадия) | 0–50 | > 200 | LM Studio медленный или недоступен |
-| `backlog_entity_extract` | выше других | > 500 | нормально для первого backfill, иначе — проблема |
-| `quarantine_size` | 0 | > 0 | требует ревью (см. `docs/runbooks/backlog-growing.md`) |
+| Поле | Что измеряет |
+|---|---|
+| `realtime_queue_depth` | глубина `asyncio.Queue` с realtime-сообщениями |
+| `backlog_classify` | сообщения без `classified_at`, не ушедшие в quarantine |
+| `backlog_extract` | signal-сообщения без `extracted_at`, не ушедшие в quarantine |
+| `backlog_entity_extract` | резервное поле под будущую стадию entity extraction |
+| `quarantine_size` | число необработанных записей в `processing_quarantine` |
 
----
+`db_detail` и `telegram_detail` могут присутствовать дополнительно, если компонент вернул ошибку.
 
-## GET /admin/metrics — метрики pipeline
+## Как интерпретировать деградацию
 
-```json
-{
-  "realtime_lag_p95_seconds": 4.2,
-  "backlog_by_stage": {
-    "classify": 12,
-    "extract": 5,
-    "embed": 5,
-    "entity_extract": 34
-  },
-  "llm_parse_error_rate_1h": 0.03,
-  "quarantine_size": 2,
-  "entity_activation_rate_7d": 0.18,
-  "entity_merge_error_rate_30d": 0.04
-}
+### `db: error`
+
+- API поднялся, но storage недоступен
+- ingestion и processing в таком состоянии не работают
+- сначала проверить Postgres и миграции
+
+### `telegram: not_authorized`
+
+- `.session` не найдена или невалидна
+- нужно выполнить `make auth`
+
+### `lm_studio: unreachable`
+
+- новые сообщения продолжают сохраняться
+- LLM-зависимые стадии backlog не двигаются
+- после восстановления LM Studio добор пойдёт автоматически
+
+### `quarantine_size > 0`
+
+- часть сообщений не может пройти pipeline автоматически
+- смотреть `GET /admin/quarantine`
+
+## Quarantine operations
+
+### Список проблемных записей
+
+```text
+GET /admin/quarantine?limit=50&offset=0
 ```
 
-### Интерпретация метрик
+Ответ содержит массив `items` и `count`.
 
-**`realtime_lag_p95_seconds`**
-Время от получения сообщения Telethon до записи `classified_at`. P95 < 10s — норма. Рост означает перегрузку processing engine или недоступность LM Studio.
+### Повторная обработка
 
-**`backlog_by_stage`**
-Число сообщений с NULL timestamp для каждой стадии. Нормально расти во время backfill. После backfill должен стремиться к нулю. Если растёт в realtime-режиме — processing не справляется.
+```text
+POST /admin/quarantine/{quarantine_id}/reprocess
+```
 
-**`llm_parse_error_rate_1h`**
-Доля ответов LLM, не прошедших Pydantic-контракт за последний час. 
-- < 0.05 — норма  
-- 0.05–0.15 — промпт деградирует или модель сменилась  
-- > 0.15 — немедленно проверить LM Studio и версию модели  
+Роут:
 
-Резкий рост после изменения промпта = регрессия, нужны evals.
+- помечает quarantine record как `reprocessed`
+- очищает `*_error` у соответствующей стадии
+- позволяет pipeline подобрать сообщение заново
 
-**`quarantine_size`**
-Любое ненулевое значение требует внимания. Сообщения в quarantine не обрабатываются автоматически — нужен ручной reprocess или skip. Процесс: `docs/runbooks/backlog-growing.md`.
+### Пропуск
 
-**`entity_activation_rate_7d`**
-Доля candidate-сущностей, перешедших в active за 7 дней.
-- Слишком низкая (< 0.05) — activation policy слишком строгая, полезные сущности не активируются  
-- Слишком высокая (> 0.5) — порог слишком мягкий, orphan entities просачиваются  
-- Калибровочный диапазон уточняется на реальных данных  
+```text
+POST /admin/quarantine/{quarantine_id}/skip
+```
 
-**`entity_merge_error_rate_30d`**
-Доля операций unmerge от общего числа merge за 30 дней. Прокси-метрика качества entity resolution.
-- < 0.05 — resolution работает хорошо  
-- > 0.10 — порог similarity или логика подтверждения требует пересмотра  
+Роут помечает запись как `skipped`, не перезапуская стадию.
 
----
+## Практический минимум для оператора
 
-## Сигналы для немедленного действия
+Стоит реагировать в первую очередь на такие сигналы:
 
-Любой из этих сигналов требует проверки без откладывания:
+1. `db != writable`
+2. `telegram = error` или `not_authorized`
+3. `lm_studio = unreachable` при растущем backlog
+4. `quarantine_size > 0`
+5. стабильно растущий `realtime_queue_depth`
 
-1. `telegram: disconnected` более 5 минут
-2. `db: unreachable` — любая длительность
-3. `quarantine_size` > 5 за один день
-4. `llm_parse_error_rate_1h` > 0.20
-5. `backlog_classify` растёт > 30 минут подряд без уменьшения
-6. `entity_merge_error_rate_30d` > 0.15
-
-Для каждого из этих случаев есть runbook в `docs/runbooks/`.
+Расширенные метрики, scheduler-health и runbooks для future-сценариев пока не внедрены.

@@ -1,74 +1,52 @@
-# Evals — процесс оценки качества LLM-стадий
+# Evals
 
-Высокоуровневый процесс. Технические детали (формат датасетов, annotation protocol, метрики) — в `evals/README.md`.
+Высокоуровневые правила для LLM-evals. Технические детали по датасетам и метрикам лежат в [evals/README.md](../evals/README.md).
 
----
+## Что есть сейчас
 
-## Что блокирует merge
+В текущем CLI поддерживаются только две стадии:
 
-Следующие изменения **требуют прогона evals** перед merge:
+- `classify`
+- `extract`
 
-| Изменение | Стадии для прогона |
-|-----------|--------------------|
-| Любой файл в `llm/prompts/` | соответствующая стадия |
-| Любой файл в `llm/contracts/` | соответствующая стадия |
-| `model` или `base_url` в `config/` | все стадии |
-| Пороги `confidence.*` в `config/` | extract, entity_extract |
-| Пороги `activation.*` в `config/` | entity_extract |
-
-Если метрика упала ниже baseline — PR не мерджится до объяснения причины или восстановления метрики.
-
----
-
-## Команды
+Команды:
 
 ```bash
-# Прогнать конкретную стадию
-python -m replyradar eval classify
-python -m replyradar eval extract
-python -m replyradar eval entity_extract
+make eval-classify
+make eval-extract
 
-# Зафиксировать текущий результат как новый baseline
-python -m replyradar eval classify --update-baseline
-
-# Прогнать все стадии
-python -m replyradar eval all
+uv run python -m replyradar eval classify
+uv run python -m replyradar eval extract
 ```
 
-Результат сохраняется в `evals/datasets/{stage}/baseline.json`.
+Обновление baseline:
 
----
+```bash
+uv run python -m replyradar eval classify --update-baseline
+uv run python -m replyradar eval extract --update-baseline
+```
 
-## Когда обновлять baseline
+## Когда прогон обязателен
 
-Baseline обновляется явным действием (`--update-baseline`) только если:
-- Метрики улучшились — новый промпт работает лучше
-- Изменилась задача стадии — старые метрики измеряют не то
-- Добавлены новые примеры в датасет
+Evals нужно запускать перед merge, если меняется что-то из:
 
-Baseline не обновляется чтобы "скрыть" регрессию.
+- `src/replyradar/llm/prompts/*`
+- `src/replyradar/llm/contracts/*`
+- модель или endpoint в `config/default.yaml` / `.env`
+- логика в `llm/client.py`, влияющая на формат или разбор ответа
 
----
+## Что считается регрессией
 
-## Добавление примеров
+Если метрики падают ниже зафиксированного baseline, изменение нельзя считать безопасным без отдельного объяснения причины.
 
-Новый пример добавляется в датасет когда:
-- Система допустила ошибку на реальных данных (regression case)
-- Обнаружен новый класс спорных случаев
-- Добавляется новый тип факта
+Цель evals здесь практическая: ловить регрессии на реальных примерах, а не строить полную benchmark-систему.
 
-Минимальный объём для первого baseline: **15–20 примеров на стадию**.  
-Рабочий объём: **30–50 примеров на стадию**.
+## Что пока не реализовано
 
-Протокол разметки и формат — в `evals/README.md`.
+Следующее пока описывает roadmap, а не текущий CLI:
 
----
+- `entity_extract` eval
+- `eval all`
+- summarization evals
 
-## Стадии и их приоритет
-
-| Стадия | Датасет | Статус |
-|--------|---------|--------|
-| Classify | `evals/datasets/classify/` | нужен до Этапа 3 |
-| Extract | `evals/datasets/extract/` | нужен до Этапа 3 |
-| EntityExtract | `evals/datasets/entity_extract/` | нужен до Этапа 5 |
-| Summarize | нет датасета | ручная оценка на реальных данных |
+Если эти команды появятся, документ нужно будет расширить вместе с runtime-изменением.
