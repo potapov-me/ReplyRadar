@@ -1,2 +1,8 @@
-# Примеры добавляются по протоколу из evals/README.md
-# Формат: один JSON-объект на строку
+{"id":"ext_001","text":"Ок, я пришлю тебе отчёт до пятницы","sender":"Иван","expected":{"commitments":[{"author":"Иван","target":"собеседник","text":"пришлёт отчёт","due_hint":"пятница"}],"pending_replies":[],"communication_risks":[]}}
+{"id":"ext_002","text":"Кстати, ты не забыл про встречу завтра в 10?","sender":"Лена","expected":{"commitments":[],"pending_replies":[{"reason":"вопрос про встречу ждёт подтверждения","urgency":"high"}],"communication_risks":[]}}
+{"id":"ext_003","text":"Я думаю это была странная ситуация с их стороны, и они вели себя некрасиво","sender":"Маша","expected":{"commitments":[],"pending_replies":[],"communication_risks":[{"type":"tension","explanation":"эмоциональная оценка конфликтной ситуации"}]}}
+{"id":"ext_004","text":"Сделаю задачу до конца недели, как договорились","sender":"Алексей","expected":{"commitments":[{"author":"Алексей","target":"собеседник","text":"сделает задачу","due_hint":"конец недели"}],"pending_replies":[],"communication_risks":[]}}
+{"id":"ext_005","text":"Дай знать когда будешь готов к звонку","sender":"Петя","expected":{"commitments":[],"pending_replies":[{"reason":"ожидание сигнала о готовности к звонку","urgency":"medium"}],"communication_risks":[]}}
+{"id":"ext_006","text":"Ты обещал прислать файлы ещё вчера, а я до сих пор ничего не получил","sender":"Сергей","expected":{"commitments":[],"pending_replies":[{"reason":"файлы не получены, срок нарушен","urgency":"high"}],"communication_risks":[{"type":"missed_deadline","explanation":"обещанные файлы не были присланы в срок"}]}}
+{"id":"ext_007","text":"Скинь ссылку на репозиторий, хочу посмотреть","sender":"Катя","expected":{"commitments":[],"pending_replies":[{"reason":"запрос ссылки ожидает ответа","urgency":"low"}],"communication_risks":[]}}
+{"id":"ext_008","text":"Перезвоню через полчаса, жди","sender":"Боб","expected":{"commitments":[{"author":"Боб","target":"собеседник","text":"перезвонит","due_hint":"через полчаса"}],"pending_replies":[],"communication_risks":[]}}

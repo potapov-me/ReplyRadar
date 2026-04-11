@@ -1,7 +1,7 @@
-.PHONY: install dev digest test lint format typecheck security check \
+.PHONY: install dev digest test test-integration lint format typecheck security check \
         db-up db-down db-logs db-reset \
         migrate migration downgrade \
-        eval-classify eval-extract eval-update-baseline \
+        eval-classify eval-extract eval-classify-update eval-extract-update \
         help
 
 # Цвета для вывода
@@ -59,8 +59,11 @@ downgrade: ## Откатить последнюю миграцию
 
 # ── Тесты ────────────────────────────────────────────────────────────────────
 
-test: ## Запустить тесты
-	uv run pytest -q
+test: ## Запустить unit-тесты (без LM Studio)
+	uv run pytest -q -m "not integration"
+
+test-integration: ## Запустить integration-тесты с живой LM Studio
+	uv run pytest tests/integration/ -v -m integration
 
 # ── Статический анализ ────────────────────────────────────────────────────────
 
@@ -84,11 +87,14 @@ check: format lint typecheck security test ## Полная проверка пе
 
 # ── Evals ────────────────────────────────────────────────────────────────────
 
-eval-classify: ## Прогнать evals для стадии classify
+eval-classify: ## Прогнать evals для стадии classify (требует LM Studio)
 	uv run python -m replyradar eval classify
 
-eval-extract: ## Прогнать evals для стадии extract
+eval-extract: ## Прогнать evals для стадии extract (требует LM Studio)
 	uv run python -m replyradar eval extract
 
-eval-update-baseline: ## Обновить baseline для classify
+eval-classify-update: ## Зафиксировать classify baseline (после смены промпта/модели)
 	uv run python -m replyradar eval classify --update-baseline
+
+eval-extract-update: ## Зафиксировать extract baseline (после смены промпта/модели)
+	uv run python -m replyradar eval extract --update-baseline

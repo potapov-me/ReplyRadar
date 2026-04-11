@@ -5,3 +5,12 @@ class ClassifyResponse(BaseModel):
     is_signal: bool
     confidence: float = Field(ge=0.0, le=1.0)
     signal_types: list[str] = Field(default_factory=list)
+
+
+class ClassifyBatchItem(BaseModel):
+    """Результат классификации одного сообщения в batch-ответе LLM."""
+
+    idx: int  # 1-based порядковый номер, совпадает с номером в промпте
+    is_signal: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    signal_types: list[str] = Field(default_factory=list)

@@ -56,6 +56,7 @@ class EntityResolutionConfig(BaseModel):
 
 class ProcessingConfig(BaseModel):
     backfill_batch_size: int = 20
+    classify_batch_size: int = 15   # сообщений в одном LLM-вызове batch-classify
     entity_extract_batch_size: int = 15
     max_retries_before_quarantine: int = 3
     backfill_concurrency: int = 1

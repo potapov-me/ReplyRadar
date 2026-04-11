@@ -15,9 +15,14 @@ from typing import TYPE_CHECKING, Any
 import litellm
 from pydantic import ValidationError
 
-from replyradar.llm.contracts.classify import ClassifyResponse
+from replyradar.llm.contracts.classify import ClassifyBatchItem, ClassifyResponse
 from replyradar.llm.contracts.extract import ExtractResponse
-from replyradar.llm.prompts.classify import CLASSIFY_SYSTEM, CLASSIFY_USER
+from replyradar.llm.prompts.classify import (
+    CLASSIFY_BATCH_SYSTEM,
+    CLASSIFY_BATCH_USER,
+    CLASSIFY_SYSTEM,
+    CLASSIFY_USER,
+)
 from replyradar.llm.prompts.extract import EXTRACT_SYSTEM, EXTRACT_USER
 
 if TYPE_CHECKING:
@@ -137,8 +142,43 @@ class LLMClient:
             text=text,
             context=context,
         )
-        raw = await self._complete(CLASSIFY_SYSTEM, user_msg, stage="classify", msg_id=msg_id)
+        # Ответ компактный (~40 токенов): ограничиваем, чтобы модель не генерировала лишнее
+        raw = await self._complete(
+            CLASSIFY_SYSTEM, user_msg, stage="classify", msg_id=msg_id, max_tokens=100
+        )
         return self._parse(ClassifyResponse, raw)
+
+    async def classify_batch(
+        self,
+        messages: list[dict[str, str | None]],
+    ) -> list[ClassifyBatchItem | None]:
+        """Batch-классификация: один LLM-вызов на весь список сообщений.
+
+        Возвращает list той же длины, что messages.
+        Элемент None означает, что результат для этого индекса отсутствует или невалиден.
+
+        Raises:
+            LLMUnavailableError: LM Studio недоступен.
+            PermanentLLMError: ответ — не JSON-массив (полный сбой парсинга).
+        """
+        n = len(messages)
+        items_lines = []
+        for i, m in enumerate(messages, start=1):
+            sender = m.get("sender_name") or "unknown"
+            # Сворачиваем переносы строк — в inline-формате батча они мешают
+            text = (m.get("text") or "").replace("\n", " ").strip()
+            items_lines.append(f"[{i}] Sender: {sender} | Message: {text}")
+
+        user_msg = CLASSIFY_BATCH_USER.format(items="\n".join(items_lines))
+        # ~60 токенов на элемент + запас
+        max_tokens = n * 60 + 30
+        raw = await self._complete(
+            CLASSIFY_BATCH_SYSTEM,
+            user_msg,
+            stage="classify_batch",
+            max_tokens=max_tokens,
+        )
+        return self._parse_batch_classify(raw, n)
 
     async def extract(
         self,
@@ -198,7 +238,15 @@ class LLMClient:
 
     # ── internal ──────────────────────────────────────────────────────────────
 
-    async def _complete(self, system: str, user: str, *, stage: str = "complete", msg_id: int | None = None) -> str:
+    async def _complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        stage: str = "complete",
+        msg_id: int | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
         """Вызывает LLM и возвращает текст ответа."""
         t0 = time.monotonic()
         try:
@@ -211,6 +259,7 @@ class LLMClient:
                 api_base=self._llm.base_url,
                 api_key=self._llm.api_key,
                 temperature=0.0,
+                **({"max_tokens": max_tokens} if max_tokens is not None else {}),
             )
             duration = time.monotonic() - t0
             usage = getattr(resp, "usage", None)
@@ -246,6 +295,45 @@ class LLMClient:
                 "llm.%s permanent msg_id=%s duration=%.3fs: %s", stage, msg_id, time.monotonic() - t0, exc
             )
             raise PermanentLLMError(f"completion permanent: {exc}") from exc
+
+    @staticmethod
+    def _parse_batch_classify(raw: str, n: int) -> list[ClassifyBatchItem | None]:
+        """Парсит batch-ответ классификации.
+
+        Возвращает list длиной n; элемент None — результат отсутствует или невалиден.
+        Бросает PermanentLLMError, если ответ не является JSON-массивом вовсе.
+        """
+        text = raw.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            text = "\n".join(line for line in lines if not line.startswith("```")).strip()
+
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise PermanentLLMError(
+                f"classify_batch: не удалось разобрать JSON: {exc!r}. Raw: {raw[:300]!r}"
+            ) from exc
+
+        if not isinstance(data, list):
+            raise PermanentLLMError(
+                f"classify_batch: ожидался массив, получен "
+                f"{type(data).__name__}. Raw: {raw[:300]!r}"
+            )
+
+        results: list[ClassifyBatchItem | None] = [None] * n
+        for item_data in data:
+            if not isinstance(item_data, dict):
+                continue
+            try:
+                item = ClassifyBatchItem(**item_data)
+            except (ValidationError, TypeError):
+                continue
+            zero_idx = item.idx - 1  # 1-based → 0-based
+            if 0 <= zero_idx < n:
+                results[zero_idx] = item
+
+        return results
 
     @staticmethod
     def _parse[T](model: type[T], raw: str) -> T:

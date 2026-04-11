@@ -16,12 +16,18 @@ Retry-счётчики живут в памяти (сбрасываются пр
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
 from replyradar.db.repos import quarantine as quarantine_repo
-from replyradar.llm.client import LLMError, LLMUnavailableError, PermanentLLMError, TransientLLMError
-from replyradar.processing.classify import mark_classify_error, run_classify
+from replyradar.llm.client import (
+    LLMError,
+    LLMUnavailableError,
+    PermanentLLMError,
+    TransientLLMError,
+)
+from replyradar.processing.classify import mark_classify_error, run_classify, run_classify_batch
 from replyradar.processing.embed import mark_embed_error, run_embed
 from replyradar.processing.extract import mark_extract_error, run_extract
 
@@ -115,19 +121,70 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                 await asyncio.sleep(0.1)
                 continue
 
+            # ── Проход 1: batch-classify необработанных сообщений ─────────────
+            # Один LLM-вызов на classify_batch_size сообщений вместо N отдельных.
+            # Контекст (N предыдущих сообщений) в batch-промпте намеренно опущен:
+            # включение context_window для каждого элемента увеличивало бы промпт
+            # в ~6× и делало батч нецелесообразным по токенам.
+            # Fallback-путь (элементы, потерянные LLM) восстанавливает контекст
+            # через _classify_one_fallback → _fetch_context.
+            # Realtime-путь (_process_row) также всегда получает контекст.
+            unclassified = await self._pool.fetch(
+                """
+                SELECT m.id, m.chat_id, m.text, m.sender_name
+                FROM messages m
+                WHERE m.classified_at IS NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM processing_quarantine q
+                    WHERE q.message_id = m.id
+                      AND q.stage = 'classify'
+                      AND q.reviewed_at IS NULL
+                  )
+                ORDER BY m.timestamp ASC
+                LIMIT $1
+                """,
+                self._config.classify_batch_size,
+            )
+
+            llm_unavailable = False
+
+            if unclassified:
+                logger.info("classify batch start size=%d", len(unclassified))
+                try:
+                    failed_ids = await run_classify_batch(
+                        self._pool,
+                        messages=[dict(r) for r in unclassified],
+                        llm=self._llm,
+                    )
+                except LLMUnavailableError:
+                    await self._wait_for_llm()
+                    continue  # свежий SELECT после восстановления
+
+                # Fallback: поштучная классификация для элементов, которые LLM пропустил
+                for msg_id in failed_ids:
+                    if not self._running:
+                        return
+                    row = next((r for r in unclassified if r["id"] == msg_id), None)
+                    if row is None:
+                        continue
+                    try:
+                        await self._classify_one_fallback(
+                            msg_id, row["chat_id"], row["text"], row["sender_name"]
+                        )
+                    except LLMUnavailableError:
+                        await self._wait_for_llm()
+                        llm_unavailable = True
+                        break
+
+            if llm_unavailable:
+                continue
+
+            # ── Проход 2: embed + extract для уже классифицированных ──────────
             rows = await self._pool.fetch(
                 """
                 SELECT m.id
                 FROM messages m
                 WHERE (
-                    m.classified_at IS NULL
-                    AND NOT EXISTS (
-                        SELECT 1 FROM processing_quarantine q
-                        WHERE q.message_id = m.id
-                          AND q.stage = 'classify'
-                          AND q.reviewed_at IS NULL
-                    )
-                ) OR (
                     m.classified_at IS NOT NULL
                     AND m.embedded_at IS NULL
                     AND NOT EXISTS (
@@ -153,18 +210,17 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                 self._config.backfill_batch_size,
             )
 
-            if not rows:
+            if not rows and not unclassified:
                 self._backfill_wakeup.clear()
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(
                         self._backfill_wakeup.wait(),
                         timeout=_BACKFILL_POLL_INTERVAL,
                     )
-                except TimeoutError:
-                    pass
                 continue
 
-            logger.info("ProcessingEngine picked backlog batch size=%d", len(rows))
+            if rows:
+                logger.info("ProcessingEngine picked backlog batch size=%d", len(rows))
 
             for row in rows:
                 if not self._queue.empty():
@@ -278,6 +334,31 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
                 ),
                 mark_error=lambda err: mark_extract_error(self._pool, message_id=msg_id, error=err),
             )
+
+    async def _classify_one_fallback(
+        self, msg_id: int, chat_id: int, text: str | None, sender_name: str | None
+    ) -> None:
+        """Поштучная classify для fallback после batch-сбоя.
+
+        В отличие от batch-пути, здесь контекст подтягивается: это важно для
+        коротких реплик ("ок, сделаю", "жду ответа"), которые без предыдущих
+        сообщений почти невозможно классифицировать верно.
+        Пробрасывает LLMUnavailableError — engine остановит батч.
+        """
+        context = await self._fetch_context(chat_id, msg_id)
+        await self._run_stage(
+            msg_id=msg_id,
+            stage="classify",
+            make_coro=lambda: run_classify(
+                self._pool,
+                message_id=msg_id,
+                text=text,
+                sender_name=sender_name,
+                llm=self._llm,
+                context=context,
+            ),
+            mark_error=lambda err: mark_classify_error(self._pool, message_id=msg_id, error=err),
+        )
 
     async def _wait_for_llm(self) -> None:
         """Блокирует обработку до восстановления LLM. Опрашивает health с экспоненциальным backoff."""

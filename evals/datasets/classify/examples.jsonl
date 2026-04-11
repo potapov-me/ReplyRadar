@@ -1,2 +1,25 @@
-# Примеры добавляются по протоколу из evals/README.md
-# Формат: один JSON-объект на строку
+{"id":"cls_001","text":"Ок, пришлю отчёт до пятницы","sender":"Иван","is_signal":true,"note":"явное обязательство"}
+{"id":"cls_002","text":"Сделаю до конца дня, не переживай","sender":"Маша","is_signal":true,"note":"commitment с успокоением"}
+{"id":"cls_003","text":"Я забронировал столик на 7 вечера, буду ждать","sender":"Алексей","is_signal":true,"note":"commitment + implicit pending_reply"}
+{"id":"cls_004","text":"Ты не забыл про встречу завтра в 10?","sender":"Лена","is_signal":true,"note":"direct question, ждёт ответа"}
+{"id":"cls_005","text":"Дай знать когда выедешь","sender":"Боб","is_signal":true,"note":"ожидание ответа"}
+{"id":"cls_006","text":"Скинь мне ссылку на документ пожалуйста","sender":"Аня","is_signal":true,"note":"explicit request ожидает ответа"}
+{"id":"cls_007","text":"Мне кажется, ты неправильно меня понял — я имел в виду совсем другое","sender":"Дима","is_signal":true,"note":"communication risk: misunderstanding"}
+{"id":"cls_008","text":"Это было некрасиво с твоей стороны","sender":"Катя","is_signal":true,"note":"communication risk: conflict"}
+{"id":"cls_009","text":"Жду ответа уже третий день, что происходит?","sender":"Петя","is_signal":true,"note":"communication risk: long silence"}
+{"id":"cls_010","text":"Я договорился с командой: встреча в четверг в 10, конференц-зал","sender":"Игорь","is_signal":true,"note":"commitment + важный факт"}
+{"id":"cls_011","text":"Могу взять эту задачу на себя, если нужно","sender":"Таня","is_signal":true,"note":"conditional commitment"}
+{"id":"cls_012","text":"Ты обещал прислать данные ещё на прошлой неделе","sender":"Сергей","is_signal":true,"note":"risk: missed commitment"}
+{"id":"cls_013","text":"Перезвоню тебе через час","sender":"Коля","is_signal":true,"note":"commitment с временным маркером"}
+{"id":"cls_014","text":"Почему ты не ответил на мой вопрос вчера?","sender":"Оля","is_signal":true,"note":"risk: unacknowledged message"}
+{"id":"cls_015","text":"хаха точно","sender":"Петя","is_signal":false,"note":"реакция без содержания"}
+{"id":"cls_016","text":"ок","sender":"Боб","is_signal":false,"note":"простое подтверждение"}
+{"id":"cls_017","text":"👍","sender":"Аня","is_signal":false,"note":"emoji-реакция"}
+{"id":"cls_018","text":"Понятно, спасибо","sender":"Катя","is_signal":false,"note":"закрытое acknowledgement"}
+{"id":"cls_019","text":"Привет! Как дела?","sender":"Маша","is_signal":false,"note":"smalltalk"}
+{"id":"cls_020","text":"Спокойной ночи","sender":"Дима","is_signal":false,"note":"farewell"}
+{"id":"cls_021","text":"Интересно","sender":"Лена","is_signal":false,"note":"нейтральная реакция"}
+{"id":"cls_022","text":"Да, слышал об этом","sender":"Игорь","is_signal":false,"note":"passive acknowledgement"}
+{"id":"cls_023","text":"Лол","sender":"Таня","is_signal":false,"note":"реакция без содержания"}
+{"id":"cls_024","text":"Да-да, точно","sender":"Коля","is_signal":false,"note":"согласие без нового содержания"}
+{"id":"cls_025","text":"Ага","sender":"Оля","is_signal":false,"note":"однословная реакция"}

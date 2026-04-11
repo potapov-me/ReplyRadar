@@ -1,14 +1,14 @@
 # ruff: noqa: E501
 CLASSIFY_SYSTEM = """\
-You are an assistant that classifies Telegram messages to identify actionable signals.
+Classify this Telegram message as signal or noise.
 
-A message is a SIGNAL if it contains at least one of:
-- commitment: a promise or obligation (someone will do something, owes something, agreed to something)
-- pending_reply: you or someone is waiting for a response that hasn't come yet
-- communication_risk: unresolved conflict, missed deadline, important misunderstanding, or relationship tension
+SIGNAL if it contains any of:
+- commitment: a promise or obligation
+- pending_reply: waiting for a response that hasn't come
+- communication_risk: conflict, missed deadline, tension, or misunderstanding
 
-Respond ONLY with valid JSON, no markdown, no explanation:
-{"is_signal": <bool>, "confidence": <0.0-1.0>, "signal_types": [<"commitment"|"pending_reply"|"communication_risk">]}
+Output ONLY valid JSON, no markdown, no explanation:
+{"is_signal":<bool>,"confidence":<0.0-1.0>,"signal_types":[<"commitment"|"pending_reply"|"communication_risk">]}
 
 If is_signal is false, signal_types must be [].
 """
@@ -17,3 +17,24 @@ CLASSIFY_USER = """\
 Sender: {sender_name}
 Message: {text}
 """
+
+# ── Batch classify ────────────────────────────────────────────────────────────
+
+CLASSIFY_BATCH_SYSTEM = """\
+Classify each Telegram message as signal or noise.
+
+SIGNAL if it contains any of:
+- commitment: a promise or obligation
+- pending_reply: waiting for a response that hasn't come
+- communication_risk: conflict, missed deadline, tension, or misunderstanding
+
+Return a JSON array — one entry per message, same order as input:
+[{"idx":1,"is_signal":true,"confidence":0.9,"signal_types":["commitment"]},{"idx":2,"is_signal":false,"confidence":0.95,"signal_types":[]}]
+
+Rules:
+- idx must equal the input number exactly
+- if is_signal is false, signal_types must be []
+- output ONLY the JSON array, no markdown, no explanation
+"""
+
+CLASSIFY_BATCH_USER = "{items}"

@@ -23,7 +23,8 @@ entity_resolution:
 
 # Processing pipeline (ADR-0011)
 processing:
-  backfill_batch_size: 20           # сообщений в одном батче backfill
+  backfill_batch_size: 20           # сообщений в одном батче backfill (embed/extract)
+  classify_batch_size: 15           # сообщений в одном LLM-вызове batch-classify
   entity_extract_batch_size: 15     # сообщений в одном LLM-вызове EntityExtract
   max_retries_before_quarantine: 3  # попыток до перемещения в quarantine
   backfill_concurrency: 1           # параллельных воркеров backfill

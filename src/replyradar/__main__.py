@@ -34,6 +34,34 @@ async def _cmd_auth() -> None:
     await client.disconnect()
 
 
+async def _cmd_eval(stage: str, *, update_baseline: bool) -> int:
+    """Запускает eval для указанной стадии. Возвращает exit code."""
+    from .config import get_settings  # noqa: PLC0415
+    from .llm.client import LLMClient, LLMUnavailableError  # noqa: PLC0415
+
+    settings = get_settings()
+    llm = LLMClient(settings.llm, settings.embedding)
+
+    print("Проверяем доступность LM Studio...")
+    if not await llm.check_health():
+        print("ERROR: LM Studio недоступна. Запустите и загрузите модель.")
+        return 1
+
+    if stage == "classify":
+        from .eval.classify import run  # noqa: PLC0415
+    elif stage == "extract":
+        from .eval.extract import run  # noqa: PLC0415
+    else:
+        print(f"ERROR: неизвестная стадия '{stage}'. Доступны: classify, extract")
+        return 1
+
+    try:
+        return await run(llm, update_baseline=update_baseline)
+    except LLMUnavailableError as exc:
+        print(f"ERROR: LLM стала недоступна в процессе eval: {exc}")
+        return 1
+
+
 def main() -> None:
     from .logging import configure_logging  # noqa: PLC0415
     configure_logging()
@@ -44,12 +72,29 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="<command>")
 
-    subparsers.add_parser("auth", help="Авторизовать Telegram-аккаунт (создать .session)")
+    subparsers.add_parser("auth", help="Авторизовать Telegram-аккаунт (создать .session файл)")
+
+    eval_parser = subparsers.add_parser(
+        "eval", help="Запустить offline-eval стадии LLM (требует LM Studio)"
+    )
+    eval_parser.add_argument(
+        "stage",
+        choices=["classify", "extract"],
+        help="Стадия для оценки",
+    )
+    eval_parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="Перезаписать baseline текущими результатами",
+    )
 
     args = parser.parse_args()
 
     if args.command == "auth":
         asyncio.run(_cmd_auth())
+    elif args.command == "eval":
+        code = asyncio.run(_cmd_eval(args.stage, update_baseline=args.update_baseline))
+        sys.exit(code)
     else:
         parser.print_help()
         sys.exit(1)
