@@ -142,10 +142,10 @@ class LLMClient:
             text=text,
             context=context,
         )
-        # Ответ компактный (~40 токенов): ограничиваем, чтобы модель не генерировала лишнее
-        raw = await self._complete(
-            CLASSIFY_SYSTEM, user_msg, stage="classify", msg_id=msg_id, max_tokens=100
-        )
+        # max_tokens не ограничиваем: модели с thinking mode (Qwen3, DeepSeek-R1)
+        # расходуют сотни токенов на внутренние рассуждения до JSON-ответа,
+        # и жёсткий лимит обрезает вывод до пустой строки.
+        raw = await self._complete(CLASSIFY_SYSTEM, user_msg, stage="classify", msg_id=msg_id)
         return self._parse(ClassifyResponse, raw)
 
     async def classify_batch(
@@ -170,8 +170,9 @@ class LLMClient:
             items_lines.append(f"[{i}] Sender: {sender} | Message: {text}")
 
         user_msg = CLASSIFY_BATCH_USER.format(items="\n".join(items_lines))
-        # ~60 токенов на элемент + запас
-        max_tokens = n * 60 + 30
+        # ~60 токенов на результат + 300 на thinking-overhead (Qwen3, DeepSeek-R1).
+        # Без запаса на thinking модель обрезается посередине JSON-массива.
+        max_tokens = n * 60 + 300
         raw = await self._complete(
             CLASSIFY_BATCH_SYSTEM,
             user_msg,

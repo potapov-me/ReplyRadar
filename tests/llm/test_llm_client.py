@@ -138,14 +138,15 @@ class TestClassify:
         assert result.is_signal is False
         assert result.signal_types == []
 
-    async def test_passes_max_tokens_100(self, client: LLMClient) -> None:
-        """classify() должен передавать max_tokens=100 — ответ компактный (~40 токенов)."""
+    async def test_does_not_set_max_tokens(self, client: LLMClient) -> None:
+        """classify() не ставит max_tokens: модели с thinking mode (Qwen3, DeepSeek-R1)
+        тратят сотни токенов на рассуждения до JSON-ответа — лимит обрезал бы вывод."""
         payload = '{"is_signal": false, "confidence": 0.9, "signal_types": []}'
         mock = AsyncMock(return_value=_resp(payload))
         with patch("litellm.acompletion", mock):
             await client.classify("текст", "Alice")
 
-        assert mock.call_args.kwargs.get("max_tokens") == 100
+        assert mock.call_args.kwargs.get("max_tokens") is None
 
     async def test_strips_markdown_fences(self, client: LLMClient) -> None:
         inner = '{"is_signal": true, "confidence": 0.7, "signal_types": ["pending_reply"]}'
@@ -217,8 +218,8 @@ class TestClassifyBatch:
         assert results[1] is None
         assert results[2] is not None
 
-    async def test_max_tokens_equals_n_times_60_plus_30(self, client: LLMClient) -> None:
-        """max_tokens масштабируется по размеру батча."""
+    async def test_max_tokens_scales_with_batch_size(self, client: LLMClient) -> None:
+        """max_tokens = n*60 + 300 (300 — запас на thinking-overhead Qwen3/DeepSeek-R1)."""
         n = len(self._MSGS)
         payload = _batch_json(*[
             {"idx": i + 1, "is_signal": False, "confidence": 0.9, "signal_types": []}
@@ -228,7 +229,7 @@ class TestClassifyBatch:
         with patch("litellm.acompletion", mock):
             await client.classify_batch(self._MSGS)
 
-        assert mock.call_args.kwargs.get("max_tokens") == n * 60 + 30
+        assert mock.call_args.kwargs.get("max_tokens") == n * 60 + 300
 
     async def test_total_json_failure_raises_permanent(self, client: LLMClient) -> None:
         with patch("litellm.acompletion", AsyncMock(return_value=_resp("не JSON"))):
