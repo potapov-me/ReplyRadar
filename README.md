@@ -126,9 +126,9 @@ make eval-extract
 |---|---|---|
 | Фундамент | ✓ | `src` layout, config, logging, Alembic, DB pool, `/status` |
 | Ingestion | ✓ | listener, monitor, backfill, Telegram Desktop import |
-| Processing core | ✓ | classify, extract, embed, quarantine |
+| Processing core | ✓ | classify (batch + fallback), extract (batch upsert), embed, quarantine |
 | Admin API | ✓ | quarantine list/reprocess/skip |
-| Scenario API | in progress | read-модели и `/today`-подобные ручки ещё не добавлены |
+| Scenario API | planned | read-модели и `/today`-подобные ручки ещё не добавлены |
 | Knowledge graph | planned | в коде пока нет domain/API слоя |
 | Digest / summarizer | planned | пакеты-заготовки без runtime-функциональности |
 | Scheduler | planned | `/status` возвращает `scheduler: not_started` |
@@ -143,3 +143,4 @@ make eval-extract
 - [План разработки](./docs/plan.md)
 - [Evals](./docs/evals.md)
 - [ADR](./docs/adr/README.md)
+- [Code review](./docs/review.md)

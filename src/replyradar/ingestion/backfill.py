@@ -54,16 +54,19 @@ async def _flush_buffer(
 ) -> int:
     """Сохраняет батч сообщений, возвращает число вставленных строк (без дублей)."""
     saved = 0
+    sender_cache: dict[int, str | None] = {}  # sender_id → name, в рамках батча
     for msg in buffer:
         sender_name: str | None = None
         if msg.sender_id:
-            try:
-                sender = await msg.get_sender()
-                sender_name = getattr(sender, "username", None) or getattr(
-                    sender, "first_name", None
-                )
-            except Exception:  # noqa: BLE001
-                pass
+            if msg.sender_id not in sender_cache:
+                try:
+                    sender = await msg.get_sender()
+                    sender_cache[msg.sender_id] = getattr(
+                        sender, "username", None
+                    ) or getattr(sender, "first_name", None)
+                except Exception:  # noqa: BLE001
+                    sender_cache[msg.sender_id] = None
+            sender_name = sender_cache[msg.sender_id]
 
         ts = msg.date
         if ts.tzinfo is None:

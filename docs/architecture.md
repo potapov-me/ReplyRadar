@@ -82,7 +82,7 @@ Lifespan поднимает компоненты через `bootstrap.create_co
 - realtime через `asyncio.Queue`
 - backlog через периодический SQL-select из `messages`
 
-Приоритет всегда у realtime. Backfill-loop ждёт, если очередь непуста.
+Приоритет всегда у realtime. Backfill-loop ждёт опустошения очереди через `asyncio.Queue.join()`.
 
 Реализованные стадии:
 
@@ -92,13 +92,11 @@ Lifespan поднимает компоненты через `bootstrap.create_co
 | `embed` | после classify | `embedding`, `embedded_at`, `embed_error` |
 | `extract` | только `is_signal = true` | сигналы в отдельных таблицах, `extracted_at`, `extract_error` |
 
-На стороне extract сейчас создаются записи в:
+**Batch classify.** Backfill-loop классифицирует сообщения пачками (`classify_batch_size`) за один LLM-вызов. Контекст (`context_window`) в batch-промпте намеренно опущен: включение N предыдущих сообщений для каждого элемента увеличивало бы промпт ~в 6× и делало батч нецелесообразным. Элементы, пропущенные LLM, повторно классифицируются поштучно (`_classify_one_fallback`) — с восстановлением контекста. Realtime-путь всегда получает контекст.
 
-- `commitments`
-- `pending_replies`
-- `communication_risks`
+**Batch extract.** Commitments, pending_replies и communication_risks вставляются за три `executemany` (по одному на таблицу) вместо N последовательных `execute`.
 
-Ошибки стадий проходят через retry в памяти и затем отправляются в `processing_quarantine`.
+**Quarantine.** Ошибки стадий проходят через retry-счётчики в памяти (сбрасываются при перезапуске — MVP) и при исчерпании попыток уходят в `processing_quarantine`. Для ускорения `NOT EXISTS`-запросов по карантину создан partial index `ix_processing_quarantine_active ON processing_quarantine (message_id, stage) WHERE reviewed_at IS NULL` (migration 0002).
 
 ### Status / admin surface
 

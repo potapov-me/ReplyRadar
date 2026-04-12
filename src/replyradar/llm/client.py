@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar
 
 import litellm
 from pydantic import ValidationError
@@ -29,6 +29,8 @@ if TYPE_CHECKING:
     from ..config import EmbeddingConfig, LLMConfig
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # LiteLLM пишет много INFO-логов, снижаем до WARNING
 litellm.suppress_debug_info = True
@@ -94,6 +96,34 @@ _TRANSIENT_EXCEPTIONS = (
 _TRANSIENT_LM_STUDIO_MESSAGES = (
     "No models loaded",  # модель не загружена, но LM Studio запущена
 )
+
+
+def _raise_llm_error(exc: Exception, stage: str, msg_id: int | None, t0: float) -> NoReturn:
+    """Классифицирует исключение LLM и бросает соответствующую ошибку.
+
+    Transient-исключения → LLMUnavailableError.
+    Всё остальное → PermanentLLMError.
+    """
+    duration = time.monotonic() - t0
+    if isinstance(exc, _TRANSIENT_EXCEPTIONS) or any(
+        m in str(exc) for m in _TRANSIENT_LM_STUDIO_MESSAGES
+    ):
+        logger.critical(
+            "llm unavailable stage=%s msg_id=%s duration=%.3fs: %s",
+            stage,
+            msg_id,
+            duration,
+            exc,
+        )
+        raise LLMUnavailableError(f"{stage} unavailable: {exc}") from exc
+    logger.warning(
+        "llm.%s permanent msg_id=%s duration=%.3fs: %s",
+        stage,
+        msg_id,
+        duration,
+        exc,
+    )
+    raise PermanentLLMError(f"{stage} permanent: {exc}") from exc
 
 
 def _llm_model_str(config: LLMConfig) -> str:
@@ -225,17 +255,8 @@ class LLMClient:
                 self._emb.model,
             )
             return vector
-        except _TRANSIENT_EXCEPTIONS as exc:
-            logger.critical("llm unavailable stage=embed msg_id=%s duration=%.3fs: %s", msg_id, time.monotonic() - t0, exc)
-            raise LLMUnavailableError(f"embedding unavailable: {exc}") from exc
         except Exception as exc:
-            if any(msg in str(exc) for msg in _TRANSIENT_LM_STUDIO_MESSAGES):
-                logger.critical(
-                    "llm unavailable stage=embed msg_id=%s duration=%.3fs: %s", msg_id, time.monotonic() - t0, exc
-                )
-                raise LLMUnavailableError(f"embedding unavailable: {exc}") from exc
-            logger.warning("llm.embed permanent msg_id=%s duration=%.3fs: %s", msg_id, time.monotonic() - t0, exc)
-            raise PermanentLLMError(f"embedding permanent: {exc}") from exc
+            _raise_llm_error(exc, "embed", msg_id, t0)
 
     # ── internal ──────────────────────────────────────────────────────────────
 
@@ -277,25 +298,8 @@ class LLMClient:
             else:
                 logger.info("llm.%s ok msg_id=%s duration=%.3fs model=%s", stage, msg_id, duration, self._llm.model)
             return resp.choices[0].message.content or ""
-        except _TRANSIENT_EXCEPTIONS as exc:
-            logger.critical(
-                "llm unavailable stage=%s msg_id=%s duration=%.3fs: %s", stage, msg_id, time.monotonic() - t0, exc
-            )
-            raise LLMUnavailableError(f"completion unavailable: {exc}") from exc
         except Exception as exc:
-            if any(msg in str(exc) for msg in _TRANSIENT_LM_STUDIO_MESSAGES):
-                logger.critical(
-                    "llm unavailable stage=%s msg_id=%s duration=%.3fs: %s",
-                    stage,
-                    msg_id,
-                    time.monotonic() - t0,
-                    exc,
-                )
-                raise LLMUnavailableError(f"completion unavailable: {exc}") from exc
-            logger.warning(
-                "llm.%s permanent msg_id=%s duration=%.3fs: %s", stage, msg_id, time.monotonic() - t0, exc
-            )
-            raise PermanentLLMError(f"completion permanent: {exc}") from exc
+            _raise_llm_error(exc, stage, msg_id, t0)
 
     @staticmethod
     def _parse_batch_classify(raw: str, n: int) -> list[ClassifyBatchItem | None]:
@@ -337,7 +341,7 @@ class LLMClient:
         return results
 
     @staticmethod
-    def _parse[T](model: type[T], raw: str) -> T:
+    def _parse(model: type[_T], raw: str) -> _T:
         """Парсит JSON-ответ в Pydantic-модель.
 
         Raises:

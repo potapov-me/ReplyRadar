@@ -46,6 +46,17 @@
 - `POST /admin/quarantine/{id}/reprocess|skip`
 - offline evals для `classify` и `extract`
 
+Code review (этап 4):
+
+- batch classify (`run_classify_batch`) + fallback на per-message с восстановлением контекста
+- `upsert_signals_batch` — batch upsert commitments/pending_replies/risks одним `executemany`
+- backfill: sender-кеш по `sender_id` внутри батча
+- `queue.join()` вместо spinloop в backfill-loop
+- partial index `ix_processing_quarantine_active` (migration 0002)
+- TTL-кеш для `check_health()` в `/status`
+- объединение двух COUNT-запросов в один scan в `/status`
+- выделен `_raise_llm_error` в `LLMClient`
+
 ## В работе / следующий приоритет
 
 ### Этап 4. Scenario API

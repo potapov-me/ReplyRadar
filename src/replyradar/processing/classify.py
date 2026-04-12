@@ -99,7 +99,7 @@ async def run_classify_batch(
         return [int(m["id"]) for m in need_llm]  # type: ignore[arg-type]
 
     failed_ids: list[int] = []
-    for msg, result in zip(need_llm, results, strict=False):
+    for msg, result in zip(need_llm, results, strict=True):
         msg_id = int(msg["id"])  # type: ignore[arg-type]
         if result is None:
             failed_ids.append(msg_id)

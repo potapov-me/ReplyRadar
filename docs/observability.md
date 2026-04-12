@@ -43,6 +43,12 @@
 
 `db_detail` и `telegram_detail` могут присутствовать дополнительно, если компонент вернул ошибку.
 
+### Производительность `/status`
+
+`backlog_classify` и `backlog_extract` вычисляются за один скан таблицы `messages` (два `COUNT(*) FILTER` в одном `SELECT`). Оба `NOT EXISTS` покрыты partial index `ix_processing_quarantine_active`.
+
+Статус LM Studio кешируется на 10 секунд в `app.state._llm_health_cache`. Повторные вызовы `/status` в течение этого окна не делают TCP-запрос к LM Studio.
+
 ## Как интерпретировать деградацию
 
 ### `db: error`

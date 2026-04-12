@@ -10,7 +10,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from replyradar.db.repos import signals as signals_repo
+from replyradar.db.repos.signals import upsert_signals_batch
 from replyradar.llm.client import LLMError, TransientLLMError
 
 if TYPE_CHECKING:
@@ -45,37 +45,16 @@ async def run_extract(  # pylint: disable=too-many-arguments
 
     result = await llm.extract(text, sender_name, context=context or [], msg_id=message_id)
 
-    for i, commitment in enumerate(result.commitments):
-        await signals_repo.upsert_commitment(
-            pool,
-            chat_id=chat_id,
-            message_id=message_id,
-            item=commitment,
-            index=i,
-            model=MODEL_TAG,
-            prompt_version=PROMPT_VERSION,
-        )
-
-    for i, reply in enumerate(result.pending_replies):
-        await signals_repo.upsert_pending_reply(
-            pool,
-            chat_id=chat_id,
-            message_id=message_id,
-            item=reply,
-            index=i,
-            model=MODEL_TAG,
-            prompt_version=PROMPT_VERSION,
-        )
-
-    for risk in result.communication_risks:
-        await signals_repo.upsert_communication_risk(
-            pool,
-            chat_id=chat_id,
-            message_id=message_id,
-            item=risk,
-            model=MODEL_TAG,
-            prompt_version=PROMPT_VERSION,
-        )
+    await upsert_signals_batch(
+        pool,
+        chat_id=chat_id,
+        message_id=message_id,
+        commitments=result.commitments,
+        pending_replies=result.pending_replies,
+        communication_risks=result.communication_risks,
+        model=MODEL_TAG,
+        prompt_version=PROMPT_VERSION,
+    )
 
     logger.debug(
         "extract msg_id=%d commitments=%d pending=%d risks=%d",

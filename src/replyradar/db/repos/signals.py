@@ -2,6 +2,9 @@
 
 Все write-операции идемпотентны через source_fingerprint (commitments/pending_replies)
 или вставку без ON CONFLICT (communication_risks — дубли фильтруются по message_id+type).
+
+upsert_signals_batch() — батчевый вариант для extract-стадии: один executemany на таблицу
+вместо N последовательных execute.
 """
 
 from __future__ import annotations
@@ -24,6 +27,99 @@ def _fingerprint(*parts: object) -> str:
     """SHA-256 первых 32 hex-символов от конкатенации строковых частей."""
     raw = ":".join(str(p) for p in parts)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+
+async def upsert_signals_batch(
+    pool: asyncpg.Pool,
+    *,
+    chat_id: int,
+    message_id: int,
+    commitments: list[CommitmentItem],
+    pending_replies: list[PendingReplyItem],
+    communication_risks: list[CommunicationRiskItem],
+    model: str,
+    prompt_version: str,
+) -> None:
+    """Батчевый upsert всех сигналов для одного сообщения.
+
+    Один executemany на каждую таблицу вместо N последовательных execute.
+    """
+    now = datetime.now(UTC)
+
+    if commitments:
+        await pool.executemany(
+            """
+            INSERT INTO commitments
+                (source_fingerprint, chat_id, message_id, author, target, text,
+                 due_hint, status, status_changed_at, extraction_model, prompt_version)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8, $9, $10)
+            ON CONFLICT (source_fingerprint) DO NOTHING
+            """,
+            [
+                (
+                    _fingerprint(chat_id, message_id, "commitment", i),
+                    chat_id,
+                    message_id,
+                    item.author,
+                    item.target,
+                    item.text,
+                    item.due_hint,
+                    now,
+                    model,
+                    prompt_version,
+                )
+                for i, item in enumerate(commitments)
+            ],
+        )
+
+    if pending_replies:
+        await pool.executemany(
+            """
+            INSERT INTO pending_replies
+                (source_fingerprint, chat_id, message_id, reason, urgency,
+                 extraction_model, prompt_version)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (source_fingerprint) DO NOTHING
+            """,
+            [
+                (
+                    _fingerprint(chat_id, message_id, "pending_reply", i),
+                    chat_id,
+                    message_id,
+                    item.reason,
+                    item.urgency,
+                    model,
+                    prompt_version,
+                )
+                for i, item in enumerate(pending_replies)
+            ],
+        )
+
+    if communication_risks:
+        await pool.executemany(
+            """
+            INSERT INTO communication_risks
+                (chat_id, message_id, type, confidence, explanation,
+                 extraction_model, prompt_version)
+            SELECT $1, $2, $3, $4, $5, $6, $7
+            WHERE NOT EXISTS (
+                SELECT 1 FROM communication_risks
+                WHERE message_id = $2 AND type = $3
+            )
+            """,
+            [
+                (
+                    chat_id,
+                    message_id,
+                    item.type,
+                    item.confidence,
+                    item.explanation,
+                    model,
+                    prompt_version,
+                )
+                for item in communication_risks
+            ],
+        )
 
 
 async def upsert_commitment(  # pylint: disable=too-many-arguments

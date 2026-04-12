@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
@@ -36,48 +37,38 @@ async def get_status(request: Request) -> dict[str, Any]:
 
     if pool is not None and db_status == "writable":
         try:
-            pipeline["backlog_classify"] = (
-                await pool.fetchval(
-                    """
-                    SELECT COUNT(*)
-                    FROM messages m
-                    WHERE m.classified_at IS NULL
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM processing_quarantine q
-                          WHERE q.message_id = m.id
-                            AND q.stage = 'classify'
-                            AND q.reviewed_at IS NULL
-                      )
-                    """
-                )
-                or 0
+            # Один скан messages для двух backlog-счётчиков
+            backlog_row = await pool.fetchrow(
+                """
+                SELECT
+                    COUNT(*) FILTER (
+                        WHERE m.classified_at IS NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM processing_quarantine q
+                              WHERE q.message_id = m.id
+                                AND q.stage = 'classify'
+                                AND q.reviewed_at IS NULL
+                          )
+                    ) AS backlog_classify,
+                    COUNT(*) FILTER (
+                        WHERE m.is_signal = true
+                          AND m.extracted_at IS NULL
+                          AND NOT EXISTS (
+                              SELECT 1 FROM processing_quarantine q
+                              WHERE q.message_id = m.id
+                                AND q.stage = 'extract'
+                                AND q.reviewed_at IS NULL
+                          )
+                    ) AS backlog_extract
+                FROM messages m
+                """
             )
-            pipeline["backlog_extract"] = (
-                await pool.fetchval(
-                    """
-                    SELECT COUNT(*)
-                    FROM messages m
-                    WHERE m.is_signal = true
-                      AND m.extracted_at IS NULL
-                      AND NOT EXISTS (
-                          SELECT 1
-                          FROM processing_quarantine q
-                          WHERE q.message_id = m.id
-                            AND q.stage = 'extract'
-                            AND q.reviewed_at IS NULL
-                      )
-                    """
-                )
-                or 0
-            )
+            if backlog_row:
+                pipeline["backlog_classify"] = backlog_row["backlog_classify"] or 0
+                pipeline["backlog_extract"] = backlog_row["backlog_extract"] or 0
             pipeline["backlog_entity_extract"] = (
                 await pool.fetchval(
-                    """
-                    SELECT COUNT(*)
-                    FROM messages
-                    WHERE entities_extracted_at IS NULL
-                    """
+                    "SELECT COUNT(*) FROM messages WHERE entities_extracted_at IS NULL"
                 )
                 or 0
             )
@@ -103,10 +94,17 @@ async def get_status(request: Request) -> dict[str, Any]:
         telegram_status = "not_configured"
         telegram_detail = None
 
-    # ── состояние LM Studio ───────────────────────────────────────────────────
+    # ── состояние LM Studio (с TTL-кешем, чтобы не дёргать TCP на каждый /status) ──
     llm = getattr(request.app.state, "llm", None)
     if llm is not None:
-        lm_studio_status = "reachable" if await llm.check_health() else "unreachable"
+        _LLM_HEALTH_TTL = 10.0
+        now = time.monotonic()
+        cached: tuple[float, str] | None = getattr(request.app.state, "_llm_health_cache", None)
+        if cached is not None and now - cached[0] < _LLM_HEALTH_TTL:
+            lm_studio_status = cached[1]
+        else:
+            lm_studio_status = "reachable" if await llm.check_health() else "unreachable"
+            request.app.state._llm_health_cache = (now, lm_studio_status)
     else:
         lm_studio_status = "not_configured"
 

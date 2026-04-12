@@ -118,7 +118,7 @@ class ProcessingEngine:  # pylint: disable=too-many-instance-attributes
     async def _backfill_loop(self) -> None:
         while self._running:
             if not self._queue.empty():
-                await asyncio.sleep(0.1)
+                await self._queue.join()  # ждём, пока realtime_loop обработает очередь
                 continue
 
             # ── Проход 1: batch-classify необработанных сообщений ─────────────

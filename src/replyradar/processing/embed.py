@@ -65,7 +65,7 @@ async def _mark_success(
 ) -> None:
     if vector is not None:
         # pgvector принимает строковое представление '[x,y,z,...]'
-        vec_str = "[" + ",".join(str(v) for v in vector) + "]"
+        vec_str = "[" + ",".join(repr(v) for v in vector) + "]"
         await pool.execute(
             """
             UPDATE messages
