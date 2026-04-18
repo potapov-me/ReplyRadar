@@ -144,3 +144,13 @@ make eval-extract
 - [Evals](./docs/evals.md)
 - [ADR](./docs/adr/README.md)
 - [Code review](./docs/review.md)
+
+## Автор
+
+Константин Потапов — разработчик, строит инструменты для личной продуктивности и работы с информацией.
+
+- Сайт: [potapov.me](https://potapov.me)
+- Telegram: [@potapov_me](https://t.me/potapov_me)
+- Email: [constantin@potapov.me](mailto:constantin@potapov.me)
+
+Если вам интересен проект, есть идеи или хотите поговорить о разработке — пишите.
